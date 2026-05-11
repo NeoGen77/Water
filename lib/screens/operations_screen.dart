@@ -4,7 +4,7 @@ import '../models/water_item.dart';
 import '../models/transaction_item.dart';
 
 class OperationsScreen extends StatefulWidget {
-  final bool isAdmin; // NOUVEAU : L'écran sait maintenant qui est connecté
+  final bool isAdmin;
 
   const OperationsScreen({super.key, required this.isAdmin});
 
@@ -25,7 +25,7 @@ class _OperationsScreenState extends State<OperationsScreen> {
       builder: (context) => FormulaireOperation(
         produits: produits,
         estRavitaillement: estRavitaillement,
-        isAdmin: widget.isAdmin, // On passe l'info au formulaire
+        isAdmin: widget.isAdmin,
       ),
     );
   }
@@ -35,7 +35,6 @@ class _OperationsScreenState extends State<OperationsScreen> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Entrées & Sorties'),
-        // Un petit badge visuel pour rappeler à la secrétaire que ses saisies sont en attente
         bottom: !widget.isAdmin
             ? const PreferredSize(
           preferredSize: Size.fromHeight(30),
@@ -99,7 +98,7 @@ class _OperationsScreenState extends State<OperationsScreen> {
 class FormulaireOperation extends StatefulWidget {
   final List<WaterItem> produits;
   final bool estRavitaillement;
-  final bool isAdmin; // Le formulaire a besoin de savoir
+  final bool isAdmin;
 
   const FormulaireOperation({super.key, required this.produits, required this.estRavitaillement, required this.isAdmin});
 
@@ -107,10 +106,13 @@ class FormulaireOperation extends StatefulWidget {
   State<FormulaireOperation> createState() => _FormulaireOperationState();
 }
 
+// ... Garde le début du fichier identique (Imports et OperationsScreen) ...
+
 class _FormulaireOperationState extends State<FormulaireOperation> {
   WaterItem? _produitSelectionne;
   final TextEditingController _quantiteController = TextEditingController();
   final TextEditingController _montantTotalController = TextEditingController();
+  final TextEditingController _nomClientController = TextEditingController();
   bool _estPaye = true;
 
   void _validerOperation() async {
@@ -124,7 +126,6 @@ class _FormulaireOperationState extends State<FormulaireOperation> {
         montantCalcule = quantiteSaisie * _produitSelectionne!.prixVente;
       }
 
-      // --- LA MAGIE EST ICI ---
       String statutOperation = widget.isAdmin ? 'VALIDEE' : 'EN_ATTENTE';
 
       TransactionItem nouvelleTransaction = TransactionItem(
@@ -135,14 +136,14 @@ class _FormulaireOperationState extends State<FormulaireOperation> {
         montant: montantCalcule,
         date: DateTime.now().toString().substring(0, 16),
         estPaye: _estPaye,
-        statut: statutOperation, // On attribue le statut
+        statut: statutOperation,
+        // On enregistre le nom peu importe si c'est payé ou non
+        nomClient: _nomClientController.text.isEmpty ? "Client Anonyme" : _nomClientController.text,
       );
 
-      // Si c'est l'Admin, on met à jour le stock tout de suite !
       if (widget.isAdmin) {
         await DBHelper().updateStock(_produitSelectionne!.id!, widget.estRavitaillement ? quantiteSaisie : -quantiteSaisie);
       }
-      // Sinon (Secrétaire), on ne touche pas au stock, on enregistre juste la transaction.
 
       await DBHelper().insertTransaction(nouvelleTransaction);
 
@@ -151,10 +152,8 @@ class _FormulaireOperationState extends State<FormulaireOperation> {
 
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(widget.isAdmin
-              ? (widget.estRavitaillement ? 'Ravitaillement enregistré !' : 'Vente enregistrée !')
-              : 'Saisie envoyée en attente de validation.'),
-          backgroundColor: widget.isAdmin ? (widget.estRavitaillement ? Colors.blue : Colors.green) : Colors.orange,
+          content: Text(widget.isAdmin ? 'Enregistré !' : 'Envoyé pour vérification'),
+          backgroundColor: widget.isAdmin ? Colors.green : Colors.orange,
         ),
       );
     }
@@ -179,25 +178,42 @@ class _FormulaireOperationState extends State<FormulaireOperation> {
               onChanged: (val) => setState(() => _produitSelectionne = val),
             ),
             const SizedBox(height: 15),
+
+            // CHAMP NOM DU CLIENT (TOUJOURS VISIBLE MAINTENANT)
+            TextField(
+              controller: _nomClientController,
+              decoration: const InputDecoration(
+                labelText: 'Nom du Client / Livreur',
+                border: OutlineInputBorder(),
+                prefixIcon: Icon(Icons.person),
+                hintText: 'Ex: M. Jean',
+              ),
+            ),
+            const SizedBox(height: 15),
+
             TextField(
               controller: _quantiteController,
               keyboardType: TextInputType.number,
               decoration: const InputDecoration(labelText: 'Nombre de Paquets', border: OutlineInputBorder()),
             ),
+
+            // ... Reste du build (Montant Total si ravitaillement et Switch Paiement) ...
             if (widget.estRavitaillement) ...[
               const SizedBox(height: 15),
               TextField(
                 controller: _montantTotalController,
                 keyboardType: TextInputType.number,
-                decoration: const InputDecoration(labelText: 'Montant Total Payé au Fournisseur', border: OutlineInputBorder(), prefixText: 'FCFA '),
+                decoration: const InputDecoration(labelText: 'Montant Total Payé', border: OutlineInputBorder(), prefixText: 'FCFA '),
               ),
             ],
+
             SwitchListTile(
               title: const Text('Paiement effectué'),
               value: _estPaye,
               activeColor: Colors.greenAccent,
               onChanged: (val) => setState(() => _estPaye = val),
             ),
+
             const SizedBox(height: 20),
             SizedBox(
               width: double.infinity,

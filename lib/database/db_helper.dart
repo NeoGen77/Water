@@ -8,7 +8,8 @@ class DBHelper {
 
   Future<Database> get database async {
     if (_database != null) return _database!;
-    _database = await _initDB('water_stock_v5.db');
+    // PASSAGE EN V6 POUR LA GESTION DES CRÉDITS
+    _database = await _initDB('water_stock_v6.db');
     return _database!;
   }
 
@@ -30,6 +31,7 @@ class DBHelper {
       )
     ''');
 
+    // AJOUT DE LA COLONNE nom_client
     await db.execute('''
       CREATE TABLE transactions (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -40,7 +42,8 @@ class DBHelper {
         montant REAL NOT NULL,
         date TEXT NOT NULL,
         est_paye INTEGER NOT NULL,
-        statut TEXT NOT NULL 
+        statut TEXT NOT NULL,
+        nom_client TEXT 
       )
     ''');
   }
@@ -67,8 +70,6 @@ class DBHelper {
         [variation, id]
     );
   }
-
-  // --- LES 2 NOUVELLES FONCTIONS POUR L'ÉDITION ---
 
   // Modifier un produit entier (Prix, Nom, etc.)
   Future<int> updateWaterItem(WaterItem item) async {

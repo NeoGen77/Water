@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import '../database/db_helper.dart';
 import '../models/transaction_item.dart';
-import 'validations_screen.dart'; // <-- AJOUTE CETTE LIGNE
+import 'validations_screen.dart';
 
 class InvoicesScreen extends StatefulWidget {
   const InvoicesScreen({super.key});
@@ -12,7 +12,7 @@ class InvoicesScreen extends StatefulWidget {
 
 class _InvoicesScreenState extends State<InvoicesScreen> {
   late Future<List<TransactionItem>> _historique;
-  String _topProduit = "..."; // Variable pour stocker l'eau la plus vendue
+  String _topProduit = "...";
 
   @override
   void initState() {
@@ -21,12 +21,10 @@ class _InvoicesScreenState extends State<InvoicesScreen> {
   }
 
   void _chargerHistorique() {
-    // 1. On charge la liste des transactions
     setState(() {
       _historique = DBHelper().getAllTransactions();
     });
 
-    // 2. On charge la statistique du produit le plus vendu en arrière-plan
     DBHelper().getTopSellingProduct().then((top) {
       if (mounted) {
         setState(() {
@@ -42,21 +40,17 @@ class _InvoicesScreenState extends State<InvoicesScreen> {
       appBar: AppBar(
         title: const Text('Historique & Caisse'),
         actions: [
-          // NOUVEAU BOUTON : Accès aux validations
           IconButton(
             icon: const Icon(Icons.fact_check_outlined, color: Colors.orangeAccent),
             tooltip: 'Saisies en attente',
             onPressed: () async {
-              // On ouvre l'écran de validation
               await Navigator.push(
                 context,
                 MaterialPageRoute(builder: (context) => const ValidationsScreen()),
               );
-              // Quand on revient de l'écran, on rafraîchit la caisse !
               _chargerHistorique();
             },
           ),
-          // L'ancien bouton pour rafraîchir
           IconButton(
             icon: const Icon(Icons.refresh),
             onPressed: _chargerHistorique,
@@ -73,10 +67,8 @@ class _InvoicesScreenState extends State<InvoicesScreen> {
           }
 
           final transactions = snapshot.data!;
-
-          // --- CALCUL DES TOTAUX FINANCIERS ---
-          double argentEntre = 0; // Recettes (Ventes = SORTIE de stock)
-          double argentSorti = 0; // Dépenses (Ravitaillement = ENTREE en stock)
+          double argentEntre = 0;
+          double argentSorti = 0;
 
           for (var trans in transactions) {
             if (trans.type == 'ENTREE') {
@@ -88,7 +80,6 @@ class _InvoicesScreenState extends State<InvoicesScreen> {
 
           return Column(
             children: [
-              // --- TABLEAU DE BORD FINANCIER (HAUT DE L'ÉCRAN) ---
               Container(
                 padding: const EdgeInsets.all(12),
                 margin: const EdgeInsets.all(8),
@@ -120,7 +111,6 @@ class _InvoicesScreenState extends State<InvoicesScreen> {
                       ],
                     ),
                     const SizedBox(height: 12),
-                    // Bannière du produit star
                     Container(
                       width: double.infinity,
                       padding: const EdgeInsets.all(10),
@@ -144,10 +134,7 @@ class _InvoicesScreenState extends State<InvoicesScreen> {
                   ],
                 ),
               ),
-
               const Divider(height: 1, color: Colors.grey),
-
-              // --- LISTE DES FACTURES (BAS DE L'ÉCRAN) ---
               Expanded(
                 child: ListView.builder(
                   padding: const EdgeInsets.all(8.0),
@@ -170,12 +157,36 @@ class _InvoicesScreenState extends State<InvoicesScreen> {
                           ),
                         ),
                         title: Text(
-                          // Mise à jour du vocabulaire grossiste
                           '${trans.marque} (${estEntree ? "Ravitaillement" : "Vente"})',
                           style: const TextStyle(fontWeight: FontWeight.bold),
                         ),
-                        subtitle: Text('Date: ${trans.date}'),
-
+                        // --- AFFICHAGE SYSTÉMATIQUE DU NOM DU CLIENT ---
+                        subtitle: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text('Date: ${trans.date}'),
+                            const SizedBox(height: 4),
+                            Row(
+                              children: [
+                                Icon(
+                                    Icons.person,
+                                    size: 14,
+                                    color: trans.estPaye ? Colors.grey : Colors.redAccent
+                                ),
+                                const SizedBox(width: 4),
+                                Text(
+                                  trans.nomClient ?? "Client Anonyme",
+                                  style: TextStyle(
+                                    // Rouge et gras si crédit, Gris si payé
+                                      color: trans.estPaye ? Colors.grey : Colors.redAccent,
+                                      fontWeight: trans.estPaye ? FontWeight.normal : FontWeight.bold,
+                                      fontSize: 13
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ],
+                        ),
                         trailing: FittedBox(
                           fit: BoxFit.scaleDown,
                           child: Column(
@@ -192,7 +203,6 @@ class _InvoicesScreenState extends State<InvoicesScreen> {
                               ),
                               const SizedBox(height: 2),
                               Text(
-                                // "articles" remplacé par "paquets"
                                 '${estEntree ? "+" : "-"}${trans.quantite} paquets',
                                 style: const TextStyle(fontSize: 12, color: Colors.grey),
                               ),
@@ -226,7 +236,6 @@ class _InvoicesScreenState extends State<InvoicesScreen> {
     );
   }
 
-  // --- WIDGET POUR DESSINER LES CARTES DE TOTAUX ---
   Widget _buildTotalCard({required String titre, required String valeur, required Color couleur, required IconData icone}) {
     return Container(
       padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
