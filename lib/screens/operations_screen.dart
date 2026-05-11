@@ -4,7 +4,9 @@ import '../models/water_item.dart';
 import '../models/transaction_item.dart';
 
 class OperationsScreen extends StatefulWidget {
-  const OperationsScreen({super.key});
+  final bool isAdmin;
+
+  const OperationsScreen({super.key, required this.isAdmin});
 
   @override
   State<OperationsScreen> createState() => _OperationsScreenState();
@@ -20,14 +22,29 @@ class _OperationsScreenState extends State<OperationsScreen> {
       isScrollControlled: true,
       backgroundColor: Theme.of(context).cardColor,
       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
-      builder: (context) => FormulaireOperation(produits: produits, estRavitaillement: estRavitaillement),
+      builder: (context) => FormulaireOperation(
+        produits: produits,
+        estRavitaillement: estRavitaillement,
+        isAdmin: widget.isAdmin,
+      ),
     );
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Entrées & Sorties')),
+      appBar: AppBar(
+        title: const Text('Entrées & Sorties'),
+        bottom: !widget.isAdmin
+            ? const PreferredSize(
+          preferredSize: Size.fromHeight(30),
+          child: Padding(
+            padding: EdgeInsets.only(bottom: 8.0),
+            child: Text('Mode Secrétaire : Les saisies seront en attente de validation', style: TextStyle(color: Colors.orangeAccent)),
+          ),
+        )
+            : null,
+      ),
       body: Padding(
         padding: const EdgeInsets.all(16.0),
         child: Column(
@@ -81,16 +98,21 @@ class _OperationsScreenState extends State<OperationsScreen> {
 class FormulaireOperation extends StatefulWidget {
   final List<WaterItem> produits;
   final bool estRavitaillement;
-  const FormulaireOperation({super.key, required this.produits, required this.estRavitaillement});
+  final bool isAdmin;
+
+  const FormulaireOperation({super.key, required this.produits, required this.estRavitaillement, required this.isAdmin});
 
   @override
   State<FormulaireOperation> createState() => _FormulaireOperationState();
 }
 
+// ... Garde le début du fichier identique (Imports et OperationsScreen) ...
+
 class _FormulaireOperationState extends State<FormulaireOperation> {
   WaterItem? _produitSelectionne;
   final TextEditingController _quantiteController = TextEditingController();
-  final TextEditingController _montantTotalController = TextEditingController(); // Pour le ravitaillement
+  final TextEditingController _montantTotalController = TextEditingController();
+  final TextEditingController _nomClientController = TextEditingController();
   bool _estPaye = true;
 
   void _validerOperation() async {
@@ -99,12 +121,12 @@ class _FormulaireOperationState extends State<FormulaireOperation> {
       double montantCalcule = 0;
 
       if (widget.estRavitaillement) {
-        // En ravitaillement, on utilise le montant total saisi manuellement
         montantCalcule = double.tryParse(_montantTotalController.text) ?? 0;
       } else {
-        // En vente, on calcule : Quantité * Prix de vente du paquet
         montantCalcule = quantiteSaisie * _produitSelectionne!.prixVente;
       }
+
+      String statutOperation = widget.isAdmin ? 'VALIDEE' : 'EN_ATTENTE';
 
       TransactionItem nouvelleTransaction = TransactionItem(
         waterItemId: _produitSelectionne!.id!,
@@ -114,20 +136,24 @@ class _FormulaireOperationState extends State<FormulaireOperation> {
         montant: montantCalcule,
         date: DateTime.now().toString().substring(0, 16),
         estPaye: _estPaye,
+        statut: statutOperation,
+        // On enregistre le nom peu importe si c'est payé ou non
+        nomClient: _nomClientController.text.isEmpty ? "Client Anonyme" : _nomClientController.text,
       );
 
-      // Met à jour le stock et enregistre la transaction
-      await DBHelper().updateStock(_produitSelectionne!.id!, widget.estRavitaillement ? quantiteSaisie : -quantiteSaisie);
+      if (widget.isAdmin) {
+        await DBHelper().updateStock(_produitSelectionne!.id!, widget.estRavitaillement ? quantiteSaisie : -quantiteSaisie);
+      }
+
       await DBHelper().insertTransaction(nouvelleTransaction);
 
       if (!mounted) return;
-      Navigator.pop(context); // Ferme le formulaire
+      Navigator.pop(context);
 
-      // Affiche le message de confirmation
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(widget.estRavitaillement ? 'Ravitaillement enregistré !' : 'Vente enregistrée !'),
-          backgroundColor: widget.estRavitaillement ? Colors.blue : Colors.green,
+          content: Text(widget.isAdmin ? 'Enregistré !' : 'Envoyé pour vérification'),
+          backgroundColor: widget.isAdmin ? Colors.green : Colors.orange,
         ),
       );
     }
@@ -136,12 +162,8 @@ class _FormulaireOperationState extends State<FormulaireOperation> {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      // Ce padding permet au menu de remonter au-dessus du clavier
-      padding: EdgeInsets.only(
-          bottom: MediaQuery.of(context).viewInsets.bottom,
-          left: 20, right: 20, top: 20
-      ),
-      child: SingleChildScrollView( // Sécurité pour empêcher le clavier de cacher le formulaire
+      padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom, left: 20, right: 20, top: 20),
+      child: SingleChildScrollView(
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -150,11 +172,22 @@ class _FormulaireOperationState extends State<FormulaireOperation> {
                 style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold)
             ),
             const SizedBox(height: 20),
-
             DropdownButtonFormField<WaterItem>(
               decoration: const InputDecoration(labelText: 'Marque', border: OutlineInputBorder()),
               items: widget.produits.map((item) => DropdownMenuItem(value: item, child: Text('${item.marque} - ${item.format}'))).toList(),
               onChanged: (val) => setState(() => _produitSelectionne = val),
+            ),
+            const SizedBox(height: 15),
+
+            // CHAMP NOM DU CLIENT (TOUJOURS VISIBLE MAINTENANT)
+            TextField(
+              controller: _nomClientController,
+              decoration: const InputDecoration(
+                labelText: 'Nom du Client / Livreur',
+                border: OutlineInputBorder(),
+                prefixIcon: Icon(Icons.person),
+                hintText: 'Ex: M. Jean',
+              ),
             ),
             const SizedBox(height: 15),
 
@@ -164,34 +197,34 @@ class _FormulaireOperationState extends State<FormulaireOperation> {
               decoration: const InputDecoration(labelText: 'Nombre de Paquets', border: OutlineInputBorder()),
             ),
 
-            // On affiche le champ montant uniquement si c'est un ravitaillement
+            // ... Reste du build (Montant Total si ravitaillement et Switch Paiement) ...
             if (widget.estRavitaillement) ...[
               const SizedBox(height: 15),
               TextField(
                 controller: _montantTotalController,
                 keyboardType: TextInputType.number,
-                decoration: const InputDecoration(labelText: 'Montant Total Payé au Fournisseur', border: OutlineInputBorder(), prefixText: 'FCFA '),
+                decoration: const InputDecoration(labelText: 'Montant Total Payé', border: OutlineInputBorder(), prefixText: 'FCFA '),
               ),
             ],
 
             SwitchListTile(
               title: const Text('Paiement effectué'),
               value: _estPaye,
-              activeThumbColor: Colors.greenAccent,
+              activeColor: Colors.greenAccent,
               onChanged: (val) => setState(() => _estPaye = val),
             ),
-            const SizedBox(height: 20),
 
+            const SizedBox(height: 20),
             SizedBox(
               width: double.infinity,
               height: 50,
               child: ElevatedButton(
                 style: ElevatedButton.styleFrom(
-                    backgroundColor: widget.estRavitaillement ? Colors.blueAccent : Colors.greenAccent,
+                    backgroundColor: widget.isAdmin ? (widget.estRavitaillement ? Colors.blueAccent : Colors.greenAccent) : Colors.orangeAccent,
                     foregroundColor: Colors.white
                 ),
                 onPressed: _validerOperation,
-                child: const Text('Valider', style: TextStyle(fontSize: 18)),
+                child: Text(widget.isAdmin ? 'Valider' : 'Envoyer pour vérification', style: const TextStyle(fontSize: 18)),
               ),
             ),
             const SizedBox(height: 20),

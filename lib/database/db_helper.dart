@@ -8,7 +8,8 @@ class DBHelper {
 
   Future<Database> get database async {
     if (_database != null) return _database!;
-    _database = await _initDB('water_stock_v4.db'); // Passage en V4
+    // PASSAGE EN V6 POUR LA GESTION DES CRÉDITS
+    _database = await _initDB('water_stock_v6.db');
     return _database!;
   }
 
@@ -30,6 +31,7 @@ class DBHelper {
       )
     ''');
 
+    // AJOUT DE LA COLONNE nom_client
     await db.execute('''
       CREATE TABLE transactions (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -39,12 +41,17 @@ class DBHelper {
         quantite INTEGER NOT NULL,
         montant REAL NOT NULL,
         date TEXT NOT NULL,
-        est_paye INTEGER NOT NULL
+        est_paye INTEGER NOT NULL,
+        statut TEXT NOT NULL,
+        nom_client TEXT 
       )
     ''');
   }
 
-  // --- Méthodes Stock ---
+  // ==========================================
+  // MÉTHODES POUR LE STOCK (WATER_ITEMS)
+  // ==========================================
+
   Future<List<WaterItem>> getAllItems() async {
     final db = await database;
     final List<Map<String, dynamic>> maps = await db.query('water_items');
@@ -64,7 +71,31 @@ class DBHelper {
     );
   }
 
-  // --- Méthodes Transactions ---
+  // Modifier un produit entier (Prix, Nom, etc.)
+  Future<int> updateWaterItem(WaterItem item) async {
+    final db = await database;
+    return await db.update(
+      'water_items',
+      item.toMap(),
+      where: 'id = ?',
+      whereArgs: [item.id],
+    );
+  }
+
+  // Supprimer un produit du catalogue
+  Future<int> deleteWaterItem(int id) async {
+    final db = await database;
+    return await db.delete(
+      'water_items',
+      where: 'id = ?',
+      whereArgs: [id],
+    );
+  }
+
+  // ==========================================
+  // MÉTHODES POUR L'HISTORIQUE (TRANSACTIONS)
+  // ==========================================
+
   Future<int> insertTransaction(TransactionItem transaction) async {
     final db = await database;
     return await db.insert('transactions', transaction.toMap());
@@ -72,8 +103,37 @@ class DBHelper {
 
   Future<List<TransactionItem>> getAllTransactions() async {
     final db = await database;
-    final List<Map<String, dynamic>> maps = await db.query('transactions', orderBy: 'id DESC');
+    final List<Map<String, dynamic>> maps = await db.query(
+        'transactions',
+        where: 'statut = ?',
+        whereArgs: ['VALIDEE'],
+        orderBy: 'id DESC'
+    );
     return List.generate(maps.length, (i) => TransactionItem.fromMap(maps[i]));
+  }
+
+  Future<List<TransactionItem>> getTransactionsEnAttente() async {
+    final db = await database;
+    final List<Map<String, dynamic>> maps = await db.query(
+        'transactions',
+        where: 'statut = ?',
+        whereArgs: ['EN_ATTENTE'],
+        orderBy: 'id DESC'
+    );
+    return List.generate(maps.length, (i) => TransactionItem.fromMap(maps[i]));
+  }
+
+  Future<int> validerTransaction(int id) async {
+    final db = await database;
+    return await db.rawUpdate(
+        'UPDATE transactions SET statut = ? WHERE id = ?',
+        ['VALIDEE', id]
+    );
+  }
+
+  Future<int> supprimerTransaction(int id) async {
+    final db = await database;
+    return await db.delete('transactions', where: 'id = ?', whereArgs: [id]);
   }
 
   Future<String> getTopSellingProduct() async {
@@ -81,7 +141,7 @@ class DBHelper {
     var res = await db.rawQuery('''
       SELECT marque, SUM(quantite) as total 
       FROM transactions 
-      WHERE type = 'SORTIE' 
+      WHERE type = 'SORTIE' AND statut = 'VALIDEE'
       GROUP BY marque 
       ORDER BY total DESC LIMIT 1
     ''');

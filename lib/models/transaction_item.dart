@@ -2,11 +2,13 @@ class TransactionItem {
   final int? id;
   final int waterItemId;
   final String marque;
-  final String type; // 'ENTREE' ou 'SORTIE'
+  final String type;
   final int quantite;
-  final double montant; // Quantité * Prix (Achat ou Vente selon le type)
+  final double montant;
   final String date;
   final bool estPaye;
+  final String statut;
+  final String? nomClient; // NOUVEAU
 
   TransactionItem({
     this.id,
@@ -17,6 +19,8 @@ class TransactionItem {
     required this.montant,
     required this.date,
     required this.estPaye,
+    this.statut = 'VALIDEE',
+    this.nomClient,
   });
 
   Map<String, dynamic> toMap() {
@@ -29,6 +33,8 @@ class TransactionItem {
       'montant': montant,
       'date': date,
       'est_paye': estPaye ? 1 : 0,
+      'statut': statut,
+      'nom_client': nomClient,
     };
   }
 
@@ -42,6 +48,8 @@ class TransactionItem {
       montant: map['montant'],
       date: map['date'],
       estPaye: map['est_paye'] == 1,
+      statut: map['statut'] ?? 'VALIDEE',
+      nomClient: map['nom_client'],
     );
   }
 }
