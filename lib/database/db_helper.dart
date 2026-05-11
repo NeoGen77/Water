@@ -8,7 +8,7 @@ class DBHelper {
 
   Future<Database> get database async {
     if (_database != null) return _database!;
-    _database = await _initDB('water_stock_v4.db'); // Passage en V4
+    _database = await _initDB('water_stock_v5.db'); // PASSAGE EN V5
     return _database!;
   }
 
@@ -30,6 +30,7 @@ class DBHelper {
       )
     ''');
 
+    // AJOUT DE LA COLONNE STATUT
     await db.execute('''
       CREATE TABLE transactions (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -39,7 +40,8 @@ class DBHelper {
         quantite INTEGER NOT NULL,
         montant REAL NOT NULL,
         date TEXT NOT NULL,
-        est_paye INTEGER NOT NULL
+        est_paye INTEGER NOT NULL,
+        statut TEXT NOT NULL 
       )
     ''');
   }
@@ -70,18 +72,55 @@ class DBHelper {
     return await db.insert('transactions', transaction.toMap());
   }
 
+  // Récupère UNIQUEMENT les transactions validées pour la caisse principale
   Future<List<TransactionItem>> getAllTransactions() async {
     final db = await database;
-    final List<Map<String, dynamic>> maps = await db.query('transactions', orderBy: 'id DESC');
+    final List<Map<String, dynamic>> maps = await db.query(
+        'transactions',
+        where: 'statut = ?',
+        whereArgs: ['VALIDEE'],
+        orderBy: 'id DESC'
+    );
     return List.generate(maps.length, (i) => TransactionItem.fromMap(maps[i]));
   }
+
+  // --- NOUVEAU : POUR LE SYSTÈME DE SÉCRÉTAIRE ---
+
+  // 1. Récupère les transactions en attente de vérification
+  Future<List<TransactionItem>> getTransactionsEnAttente() async {
+    final db = await database;
+    final List<Map<String, dynamic>> maps = await db.query(
+        'transactions',
+        where: 'statut = ?',
+        whereArgs: ['EN_ATTENTE'],
+        orderBy: 'id DESC'
+    );
+    return List.generate(maps.length, (i) => TransactionItem.fromMap(maps[i]));
+  }
+
+  // 2. Fonction pour l'Admin pour valider une opération
+  Future<int> validerTransaction(int id) async {
+    final db = await database;
+    return await db.rawUpdate(
+        'UPDATE transactions SET statut = ? WHERE id = ?',
+        ['VALIDEE', id]
+    );
+  }
+
+  // 3. Fonction pour rejeter/supprimer une fausse saisie de la secrétaire
+  Future<int> supprimerTransaction(int id) async {
+    final db = await database;
+    return await db.delete('transactions', where: 'id = ?', whereArgs: [id]);
+  }
+
+  // ------------------------------------------------
 
   Future<String> getTopSellingProduct() async {
     final db = await database;
     var res = await db.rawQuery('''
       SELECT marque, SUM(quantite) as total 
       FROM transactions 
-      WHERE type = 'SORTIE' 
+      WHERE type = 'SORTIE' AND statut = 'VALIDEE'
       GROUP BY marque 
       ORDER BY total DESC LIMIT 1
     ''');

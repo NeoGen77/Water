@@ -4,9 +4,10 @@ class TransactionItem {
   final String marque;
   final String type; // 'ENTREE' ou 'SORTIE'
   final int quantite;
-  final double montant; // Quantité * Prix (Achat ou Vente selon le type)
+  final double montant;
   final String date;
   final bool estPaye;
+  final String statut; // NOUVEAU : 'VALIDEE' ou 'EN_ATTENTE'
 
   TransactionItem({
     this.id,
@@ -17,6 +18,7 @@ class TransactionItem {
     required this.montant,
     required this.date,
     required this.estPaye,
+    this.statut = 'VALIDEE', // Par défaut, on considère que c'est validé
   });
 
   Map<String, dynamic> toMap() {
@@ -29,6 +31,7 @@ class TransactionItem {
       'montant': montant,
       'date': date,
       'est_paye': estPaye ? 1 : 0,
+      'statut': statut,
     };
   }
 
@@ -42,6 +45,7 @@ class TransactionItem {
       montant: map['montant'],
       date: map['date'],
       estPaye: map['est_paye'] == 1,
+      statut: map['statut'] ?? 'VALIDEE',
     );
   }
 }
