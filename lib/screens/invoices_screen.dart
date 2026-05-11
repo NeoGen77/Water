@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../database/db_helper.dart';
 import '../models/transaction_item.dart';
+import 'validations_screen.dart'; // <-- AJOUTE CETTE LIGNE
 
 class InvoicesScreen extends StatefulWidget {
   const InvoicesScreen({super.key});
@@ -41,9 +42,24 @@ class _InvoicesScreenState extends State<InvoicesScreen> {
       appBar: AppBar(
         title: const Text('Historique & Caisse'),
         actions: [
+          // NOUVEAU BOUTON : Accès aux validations
+          IconButton(
+            icon: const Icon(Icons.fact_check_outlined, color: Colors.orangeAccent),
+            tooltip: 'Saisies en attente',
+            onPressed: () async {
+              // On ouvre l'écran de validation
+              await Navigator.push(
+                context,
+                MaterialPageRoute(builder: (context) => const ValidationsScreen()),
+              );
+              // Quand on revient de l'écran, on rafraîchit la caisse !
+              _chargerHistorique();
+            },
+          ),
+          // L'ancien bouton pour rafraîchir
           IconButton(
             icon: const Icon(Icons.refresh),
-            onPressed: _chargerHistorique, // Bouton pour rafraîchir manuellement
+            onPressed: _chargerHistorique,
           )
         ],
       ),

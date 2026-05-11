@@ -7,7 +7,7 @@ import 'screens/login_screen.dart';
 import 'screens/dashboard_screen.dart';
 import 'screens/operations_screen.dart';
 import 'screens/invoices_screen.dart';
-import 'screens/profile_screen.dart'; // L'écran Profil est bien importé ici
+import 'screens/profile_screen.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -73,7 +73,8 @@ class _MainNavigationState extends State<MainNavigation> {
     // 1. On construit la liste des écrans selon le rôle
     List<Widget> screens = [
       const DashboardScreen(),
-      const OperationsScreen(),
+      // LA MODIFICATION EST ICI : On passe la variable isAdmin
+      OperationsScreen(isAdmin: widget.isAdmin),
     ];
 
     // Si c'est l'Admin, on ajoute l'écran Caisse
