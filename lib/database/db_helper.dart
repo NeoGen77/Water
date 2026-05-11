@@ -8,7 +8,7 @@ class DBHelper {
 
   Future<Database> get database async {
     if (_database != null) return _database!;
-    _database = await _initDB('water_stock_v5.db'); // PASSAGE EN V5
+    _database = await _initDB('water_stock_v5.db');
     return _database!;
   }
 
@@ -30,7 +30,6 @@ class DBHelper {
       )
     ''');
 
-    // AJOUT DE LA COLONNE STATUT
     await db.execute('''
       CREATE TABLE transactions (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -46,7 +45,10 @@ class DBHelper {
     ''');
   }
 
-  // --- Méthodes Stock ---
+  // ==========================================
+  // MÉTHODES POUR LE STOCK (WATER_ITEMS)
+  // ==========================================
+
   Future<List<WaterItem>> getAllItems() async {
     final db = await database;
     final List<Map<String, dynamic>> maps = await db.query('water_items');
@@ -66,13 +68,38 @@ class DBHelper {
     );
   }
 
-  // --- Méthodes Transactions ---
+  // --- LES 2 NOUVELLES FONCTIONS POUR L'ÉDITION ---
+
+  // Modifier un produit entier (Prix, Nom, etc.)
+  Future<int> updateWaterItem(WaterItem item) async {
+    final db = await database;
+    return await db.update(
+      'water_items',
+      item.toMap(),
+      where: 'id = ?',
+      whereArgs: [item.id],
+    );
+  }
+
+  // Supprimer un produit du catalogue
+  Future<int> deleteWaterItem(int id) async {
+    final db = await database;
+    return await db.delete(
+      'water_items',
+      where: 'id = ?',
+      whereArgs: [id],
+    );
+  }
+
+  // ==========================================
+  // MÉTHODES POUR L'HISTORIQUE (TRANSACTIONS)
+  // ==========================================
+
   Future<int> insertTransaction(TransactionItem transaction) async {
     final db = await database;
     return await db.insert('transactions', transaction.toMap());
   }
 
-  // Récupère UNIQUEMENT les transactions validées pour la caisse principale
   Future<List<TransactionItem>> getAllTransactions() async {
     final db = await database;
     final List<Map<String, dynamic>> maps = await db.query(
@@ -84,9 +111,6 @@ class DBHelper {
     return List.generate(maps.length, (i) => TransactionItem.fromMap(maps[i]));
   }
 
-  // --- NOUVEAU : POUR LE SYSTÈME DE SÉCRÉTAIRE ---
-
-  // 1. Récupère les transactions en attente de vérification
   Future<List<TransactionItem>> getTransactionsEnAttente() async {
     final db = await database;
     final List<Map<String, dynamic>> maps = await db.query(
@@ -98,7 +122,6 @@ class DBHelper {
     return List.generate(maps.length, (i) => TransactionItem.fromMap(maps[i]));
   }
 
-  // 2. Fonction pour l'Admin pour valider une opération
   Future<int> validerTransaction(int id) async {
     final db = await database;
     return await db.rawUpdate(
@@ -107,13 +130,10 @@ class DBHelper {
     );
   }
 
-  // 3. Fonction pour rejeter/supprimer une fausse saisie de la secrétaire
   Future<int> supprimerTransaction(int id) async {
     final db = await database;
     return await db.delete('transactions', where: 'id = ?', whereArgs: [id]);
   }
-
-  // ------------------------------------------------
 
   Future<String> getTopSellingProduct() async {
     final db = await database;
