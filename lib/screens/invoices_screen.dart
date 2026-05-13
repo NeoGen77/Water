@@ -3,6 +3,7 @@ import '../database/db_helper.dart';
 import '../models/transaction_item.dart';
 import '../models/water_item.dart';
 import 'validations_screen.dart';
+import 'debts_screen.dart'; // NOUVEAU : Import de la page des dettes
 
 class InvoicesScreen extends StatefulWidget {
   const InvoicesScreen({super.key});
@@ -15,48 +16,41 @@ class _InvoicesScreenState extends State<InvoicesScreen> {
   // --- VARIABLES POUR LA PAGINATION ---
   final ScrollController _scrollController = ScrollController();
   List<TransactionItem> _transactions = [];
-  bool _isLoading = false;   // Indique si un chargement est en cours
-  bool _hasMore = true;      // Indique s'il reste des données dans la base
-  int _offset = 0;           // Point de départ pour la requête SQL
-  final int _limit = 20;     // Nombre de lignes à charger à la fois
+  bool _isLoading = false;
+  bool _hasMore = true;
+  int _offset = 0;
+  final int _limit = 20;
 
   // --- VARIABLES EXISTANTES ---
   String _topProduit = "...";
   String _filtreActuel = 'Tout';
 
-  // Variables pour les détails du stock
   double _valeurTotaleStock = 0;
   List<Map<String, dynamic>> _detailsStock = [];
   bool _afficherDetailsStock = false;
 
-  // Variables pour les totaux globaux calculés par SQL
   double _totalRecettes = 0;
   double _totalDepenses = 0;
 
   @override
   void initState() {
     super.initState();
-
-    // Détecteur de défilement : charge la suite quand on arrive en bas
     _scrollController.addListener(() {
       if (_scrollController.position.pixels >= _scrollController.position.maxScrollExtent - 100) {
         _chargerPlusDeTransactions();
       }
     });
-
     _initialiserEcran();
   }
 
   @override
   void dispose() {
-    _scrollController.dispose(); // Important pour libérer la mémoire
+    _scrollController.dispose();
     super.dispose();
   }
 
   // --- LOGIQUE DE CHARGEMENT OPTIMISÉE ---
-
   void _initialiserEcran() {
-    // On remet tout à zéro (utile quand on change de filtre)
     setState(() {
       _transactions.clear();
       _offset = 0;
@@ -72,7 +66,6 @@ class _InvoicesScreenState extends State<InvoicesScreen> {
 
     setState(() => _isLoading = true);
 
-    // On charge les 20 prochaines lignes
     List<TransactionItem> nouvellesLignes = await DBHelper().getAllTransactions(
         filter: _filtreActuel,
         limit: _limit,
@@ -82,20 +75,18 @@ class _InvoicesScreenState extends State<InvoicesScreen> {
     setState(() {
       _isLoading = false;
       if (nouvellesLignes.length < _limit) {
-        _hasMore = false; // On a atteint la fin de la base de données
+        _hasMore = false;
       }
       _transactions.addAll(nouvellesLignes);
-      _offset += _limit; // On décale le point de départ pour le prochain scroll
+      _offset += _limit;
     });
   }
 
   void _chargerStatistiques() {
-    // Top Vente
     DBHelper().getTopSellingProduct().then((top) {
       if (mounted) setState(() => _topProduit = top);
     });
 
-    // Vrais totaux mathématiques (ultra-rapide)
     DBHelper().getBilanFinancier(filter: _filtreActuel).then((bilan) {
       if (mounted) {
         setState(() {
@@ -105,7 +96,6 @@ class _InvoicesScreenState extends State<InvoicesScreen> {
       }
     });
 
-    // Valeur Globale et détails du Stock
     DBHelper().getAllItems().then((items) {
       double total = 0;
       List<Map<String, dynamic>> details = [];
@@ -139,6 +129,20 @@ class _InvoicesScreenState extends State<InvoicesScreen> {
       appBar: AppBar(
         title: const Text('Historique & Caisse'),
         actions: [
+          // NOUVEAU BOUTON : Accès direct à l'écran des dettes
+          IconButton(
+            icon: const Icon(Icons.menu_book, color: Colors.redAccent),
+            tooltip: 'Suivi des Crédits / Dettes',
+            onPressed: () async {
+              await Navigator.push(
+                context,
+                MaterialPageRoute(builder: (context) => const DebtsScreen()),
+              );
+              // Quand on revient, on rafraîchit tout car une dette a pu être encaissée !
+              _initialiserEcran();
+            },
+          ),
+
           PopupMenuButton<String>(
             icon: const Icon(Icons.filter_list, color: Colors.blueAccent),
             tooltip: 'Filtrer par date',
@@ -146,7 +150,7 @@ class _InvoicesScreenState extends State<InvoicesScreen> {
               setState(() {
                 _filtreActuel = choix;
               });
-              _initialiserEcran(); // Recharge tout avec le nouveau filtre
+              _initialiserEcran();
             },
             itemBuilder: (BuildContext context) {
               return ['Tout', 'Aujourd\'hui', 'Ce mois-ci'].map((String choix) {
@@ -181,7 +185,7 @@ class _InvoicesScreenState extends State<InvoicesScreen> {
                 context,
                 MaterialPageRoute(builder: (context) => const ValidationsScreen()),
               );
-              _initialiserEcran(); // Actualise si une transaction a été validée
+              _initialiserEcran();
             },
           ),
         ],
@@ -319,13 +323,11 @@ class _InvoicesScreenState extends State<InvoicesScreen> {
             child: _transactions.isEmpty && !_isLoading
                 ? const Center(child: Text('Aucune transaction trouvée.', style: TextStyle(color: Colors.grey)))
                 : ListView.builder(
-              controller: _scrollController, // Attache le détecteur de scroll
+              controller: _scrollController,
               padding: const EdgeInsets.all(8.0),
-              // Ajoute +1 pour afficher l'indicateur de chargement en bas si nécessaire
               itemCount: _transactions.length + (_hasMore ? 1 : 0),
               itemBuilder: (context, index) {
 
-                // Affiche le spinner de chargement si on est tout en bas
                 if (index == _transactions.length) {
                   return const Center(
                       child: Padding(
