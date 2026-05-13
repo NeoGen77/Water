@@ -3,6 +3,7 @@ import '../database/db_helper.dart';
 import '../models/transaction_item.dart';
 import '../models/water_item.dart';
 import 'validations_screen.dart';
+import 'reports_screen.dart';
 import 'debts_screen.dart'; // NOUVEAU : Import de la page des dettes
 
 class InvoicesScreen extends StatefulWidget {
@@ -129,6 +130,17 @@ class _InvoicesScreenState extends State<InvoicesScreen> {
       appBar: AppBar(
         title: const Text('Historique & Caisse'),
         actions: [
+          // NOUVEAU BOUTON : Accès aux Rapports Journaliers
+          IconButton(
+            icon: const Icon(Icons.bar_chart, color: Colors.indigo),
+            tooltip: 'Rapports Journaliers',
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (context) => const ReportsScreen()), // Assure-toi d'importer le fichier en haut !
+              );
+            },
+          ),
           // NOUVEAU BOUTON : Accès direct à l'écran des dettes
           IconButton(
             icon: const Icon(Icons.menu_book, color: Colors.redAccent),

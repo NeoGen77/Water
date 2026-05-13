@@ -322,4 +322,24 @@ class DBHelper {
     }
     return {};
   }
+  // ==========================================
+  // OPTION B : RAPPORTS AUTOMATIQUES SANS CLÔTURE MANUELLE
+  // ==========================================
+  Future<List<Map<String, dynamic>>> getRapportsJournaliersAutomatiques() async {
+    final db = await database;
+
+    // On regroupe les transactions par les 10 premiers caractères de la date (YYYY-MM-DD)
+    return await db.rawQuery('''
+      SELECT 
+        substr(date, 1, 10) as jour,
+        SUM(CASE WHEN type = 'SORTIE' AND est_paye = 1 THEN montant ELSE 0 END) as recettes,
+        SUM(CASE WHEN type = 'ENTREE' THEN montant ELSE 0 END) as depenses,
+        SUM(CASE WHEN type = 'SORTIE' AND est_paye = 0 THEN montant ELSE 0 END) as credits,
+        COUNT(id) as nombre_operations
+      FROM transactions
+      WHERE statut = 'VALIDEE'
+      GROUP BY substr(date, 1, 10)
+      ORDER BY jour DESC
+    ''');
+  }
 }
