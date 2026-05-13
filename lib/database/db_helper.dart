@@ -8,7 +8,7 @@ class DBHelper {
 
   Future<Database> get database async {
     if (_database != null) return _database!;
-    // PASSAGE EN V6 POUR LA GESTION DES CRÉDITS
+    // PASSAGE EN V6 POUR LA GESTION DES CRÉDITS ET NOMS CLIENTS
     _database = await _initDB('water_stock_v6.db');
     return _database!;
   }
@@ -101,12 +101,29 @@ class DBHelper {
     return await db.insert('transactions', transaction.toMap());
   }
 
-  Future<List<TransactionItem>> getAllTransactions() async {
+  // --- MISE À JOUR : AJOUT DU FILTRE TEMPOREL ---
+  Future<List<TransactionItem>> getAllTransactions({String filter = 'Tout'}) async {
     final db = await database;
+
+    String whereClause = 'statut = ?';
+    List<dynamic> whereArgs = ['VALIDEE'];
+
+    DateTime now = DateTime.now();
+
+    if (filter == 'Aujourd\'hui') {
+      String today = now.toString().substring(0, 10); // Extrait "YYYY-MM-DD"
+      whereClause += ' AND date LIKE ?';
+      whereArgs.add('$today%');
+    } else if (filter == 'Ce mois-ci') {
+      String month = now.toString().substring(0, 7); // Extrait "YYYY-MM"
+      whereClause += ' AND date LIKE ?';
+      whereArgs.add('$month%');
+    }
+
     final List<Map<String, dynamic>> maps = await db.query(
         'transactions',
-        where: 'statut = ?',
-        whereArgs: ['VALIDEE'],
+        where: whereClause,
+        whereArgs: whereArgs,
         orderBy: 'id DESC'
     );
     return List.generate(maps.length, (i) => TransactionItem.fromMap(maps[i]));
@@ -147,5 +164,30 @@ class DBHelper {
     ''');
     if (res.isNotEmpty && res.first['marque'] != null) return res.first['marque'] as String;
     return "Aucune vente";
+  }
+
+  // ==========================================
+  // NOUVELLES MÉTHODES POUR LA GESTION DES DETTES
+  // ==========================================
+
+  // Marquer une dette comme payée (est_paye passe à 1)
+  Future<int> solderDette(int id) async {
+    final db = await database;
+    return await db.rawUpdate(
+        'UPDATE transactions SET est_paye = ? WHERE id = ?',
+        [1, id]
+    );
+  }
+
+  // Récupérer uniquement les factures impayées (crédits)
+  Future<List<TransactionItem>> getToutesLesDettes() async {
+    final db = await database;
+    final List<Map<String, dynamic>> maps = await db.query(
+        'transactions',
+        where: 'type = ? AND est_paye = ? AND statut = ?',
+        whereArgs: ['SORTIE', 0, 'VALIDEE'], // 0 = non payé
+        orderBy: 'id DESC'
+    );
+    return List.generate(maps.length, (i) => TransactionItem.fromMap(maps[i]));
   }
 }
