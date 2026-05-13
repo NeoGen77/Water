@@ -342,4 +342,15 @@ class DBHelper {
       ORDER BY jour DESC
     ''');
   }
+  // Permet d'écraser un produit en base locale depuis un dictionnaire Cloud
+  Future<void> updateWaterItemMapSilencieux(Map<String, dynamic> map) async {
+    final db = await database;
+    await db.insert('water_items', map, conflictAlgorithm: ConflictAlgorithm.replace);
+  }
+
+  // Permet d'écraser une transaction en base locale depuis un dictionnaire Cloud
+  Future<void> insertTransactionSilencieux(Map<String, dynamic> map) async {
+    final db = await database;
+    await db.insert('transactions', map, conflictAlgorithm: ConflictAlgorithm.replace);
+  }
 }

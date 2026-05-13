@@ -5,6 +5,7 @@ import '../models/water_item.dart';
 import 'validations_screen.dart';
 import 'reports_screen.dart';
 import 'debts_screen.dart'; // NOUVEAU : Import de la page des dettes
+import '../services/sync_service.dart'; // NOUVEAU : Import du moteur de synchro
 
 class InvoicesScreen extends StatefulWidget {
   const InvoicesScreen({super.key});
@@ -130,6 +131,39 @@ class _InvoicesScreenState extends State<InvoicesScreen> {
       appBar: AppBar(
         title: const Text('Historique & Caisse'),
         actions: [
+          IconButton(
+            icon: const Icon(Icons.cloud_upload, color: Colors.blueAccent),
+            tooltip: 'Sauvegarder dans le Cloud',
+            onPressed: () async {
+              // On capture le ScaffoldMessenger avant le await
+              final messenger = ScaffoldMessenger.of(context);
+
+              messenger.showSnackBar(
+                const SnackBar(
+                  content: Row(
+                    children: [
+                      CircularProgressIndicator(color: Colors.white),
+                      SizedBox(width: 15),
+                      Text('Envoi vers Supabase en cours...'),
+                    ],
+                  ),
+                ),
+              );
+
+              await SyncService().pushToutVersLeCloud();
+
+              // On vérifie si l'écran est toujours affiché avant d'interagir avec l'UI
+              if (!mounted) return;
+
+              messenger.hideCurrentSnackBar();
+              messenger.showSnackBar(
+                const SnackBar(
+                  content: Text('✅ Sauvegarde Cloud terminée avec succès !'),
+                  backgroundColor: Colors.green,
+                ),
+              );
+            },
+          ),
           // NOUVEAU BOUTON : Accès aux Rapports Journaliers
           IconButton(
             icon: const Icon(Icons.bar_chart, color: Colors.indigo),
