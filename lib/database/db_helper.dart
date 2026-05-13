@@ -8,8 +8,8 @@ class DBHelper {
 
   Future<Database> get database async {
     if (_database != null) return _database!;
-    // PASSAGE EN V6 POUR LA GESTION DES CRÉDITS ET NOMS CLIENTS
-    _database = await _initDB('water_stock_v6.db');
+    // PASSAGE EN V7 POUR LA CLÔTURE DE CAISSE ET ARCHIVES
+    _database = await _initDB('water_stock_v7.db');
     return _database!;
   }
 
@@ -31,7 +31,6 @@ class DBHelper {
       )
     ''');
 
-    // AJOUT DE LA COLONNE nom_client
     await db.execute('''
       CREATE TABLE transactions (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -44,6 +43,22 @@ class DBHelper {
         est_paye INTEGER NOT NULL,
         statut TEXT NOT NULL,
         nom_client TEXT 
+      )
+    ''');
+
+    // NOUVELLE TABLE : Les Archives de Fin de Journée
+    await db.execute('''
+      CREATE TABLE bilans_journaliers (
+        date_cloture TEXT PRIMARY KEY,
+        total_entrees REAL NOT NULL,
+        total_sorties REAL NOT NULL,
+        total_credits_accordes REAL NOT NULL,
+        total_credits_encaisses REAL NOT NULL,
+        cash_theorique REAL NOT NULL,
+        cash_reel_declare REAL NOT NULL,
+        ecart_caisse REAL NOT NULL,
+        nombre_ventes INTEGER NOT NULL,
+        marque_top_vente TEXT
       )
     ''');
   }
@@ -71,7 +86,6 @@ class DBHelper {
     );
   }
 
-  // Modifier un produit entier (Prix, Nom, etc.)
   Future<int> updateWaterItem(WaterItem item) async {
     final db = await database;
     return await db.update(
@@ -82,7 +96,6 @@ class DBHelper {
     );
   }
 
-  // Supprimer un produit du catalogue
   Future<int> deleteWaterItem(int id) async {
     final db = await database;
     return await db.delete(
@@ -101,23 +114,19 @@ class DBHelper {
     return await db.insert('transactions', transaction.toMap());
   }
 
-  // --- MISE À JOUR : AJOUT DE LA PAGINATION (LIMIT / OFFSET) ---
   Future<List<TransactionItem>> getAllTransactions({String filter = 'Tout', int limit = 20, int offset = 0}) async {
     final db = await database;
 
     String whereClause = 'statut = ?';
     List<dynamic> whereArgs = ['VALIDEE'];
-
     DateTime now = DateTime.now();
 
     if (filter == 'Aujourd\'hui') {
-      String today = now.toString().substring(0, 10); // Extrait "YYYY-MM-DD"
       whereClause += ' AND date LIKE ?';
-      whereArgs.add('$today%');
+      whereArgs.add('${now.toString().substring(0, 10)}%');
     } else if (filter == 'Ce mois-ci') {
-      String month = now.toString().substring(0, 7); // Extrait "YYYY-MM"
       whereClause += ' AND date LIKE ?';
-      whereArgs.add('$month%');
+      whereArgs.add('${now.toString().substring(0, 7)}%');
     }
 
     final List<Map<String, dynamic>> maps = await db.query(
@@ -125,14 +134,13 @@ class DBHelper {
         where: whereClause,
         whereArgs: whereArgs,
         orderBy: 'id DESC',
-        limit: limit, // Limite le nombre de résultats (ex: 20)
-        offset: offset // Décale le point de départ (ex: sauter les 20 premiers)
+        limit: limit,
+        offset: offset
     );
     return List.generate(maps.length, (i) => TransactionItem.fromMap(maps[i]));
   }
 
-  // --- NOUVELLE MÉTHODE : CALCULER LES TOTAUX DIRECTEMENT EN SQL ---
-  // Utile car getAllTransactions ne ramène maintenant qu'une partie des données (ex: 20 lignes)
+  // --- MISE À JOUR : Calcul du VRAI cash en caisse ---
   Future<Map<String, double>> getBilanFinancier({String filter = 'Tout'}) async {
     final db = await database;
     String whereClause = 'statut = ?';
@@ -147,22 +155,23 @@ class DBHelper {
       whereArgs.add('${now.toString().substring(0, 7)}%');
     }
 
-    // Demande à SQLite de faire les additions lui-même (très rapide)
+    // On récupère aussi 'est_paye' pour séparer virtuellement les dettes du cash
     var resultat = await db.rawQuery('''
-      SELECT type, SUM(montant) as total
+      SELECT type, SUM(montant) as total, est_paye
       FROM transactions
       WHERE $whereClause
-      GROUP BY type
+      GROUP BY type, est_paye
     ''', whereArgs);
 
-    double recettes = 0;
-    double depenses = 0;
+    double recettes = 0; // Argent physiquement entré
+    double depenses = 0; // Argent physiquement sorti
 
     for (var row in resultat) {
       if (row['type'] == 'ENTREE') {
-        depenses = (row['total'] as num?)?.toDouble() ?? 0.0;
-      } else if (row['type'] == 'SORTIE') {
-        recettes = (row['total'] as num?)?.toDouble() ?? 0.0;
+        depenses += (row['total'] as num?)?.toDouble() ?? 0.0;
+      } else if (row['type'] == 'SORTIE' && row['est_paye'] == 1) {
+        // NOUVEAU : On n'ajoute aux recettes QUE si c'est payé !
+        recettes += (row['total'] as num?)?.toDouble() ?? 0.0;
       }
     }
     return {'recettes': recettes, 'depenses': depenses};
@@ -197,7 +206,7 @@ class DBHelper {
     var res = await db.rawQuery('''
       SELECT marque, SUM(quantite) as total 
       FROM transactions 
-      WHERE type = 'SORTIE' AND statut = 'VALIDEE'
+      WHERE type = 'SORTIE' AND statut = 'VALIDEE' AND date LIKE '${DateTime.now().toString().substring(0, 10)}%'
       GROUP BY marque 
       ORDER BY total DESC LIMIT 1
     ''');
@@ -209,16 +218,19 @@ class DBHelper {
   // MÉTHODES POUR LA GESTION DES DETTES
   // ==========================================
 
-  // Marquer une dette comme payée (est_paye passe à 1)
+  // --- MISE À JOUR : Changer la date lors de l'encaissement ---
   Future<int> solderDette(int id) async {
     final db = await database;
+    // On récupère l'heure exacte du moment où on clique sur "Encaisser"
+    String today = DateTime.now().toString().substring(0, 19);
+
+    // On met à jour le statut ET la date pour que l'argent rentre dans la caisse d'aujourd'hui
     return await db.rawUpdate(
-        'UPDATE transactions SET est_paye = ? WHERE id = ?',
-        [1, id]
+        'UPDATE transactions SET est_paye = ?, date = ? WHERE id = ?',
+        [1, today, id]
     );
   }
 
-  // Récupérer uniquement les factures impayées (crédits)
   Future<List<TransactionItem>> getToutesLesDettes() async {
     final db = await database;
     final List<Map<String, dynamic>> maps = await db.query(
@@ -228,5 +240,86 @@ class DBHelper {
         orderBy: 'id DESC'
     );
     return List.generate(maps.length, (i) => TransactionItem.fromMap(maps[i]));
+  }
+
+  // ==========================================
+  // NOUVELLES MÉTHODES : CLÔTURE DE CAISSE & RAPPORTS
+  // ==========================================
+
+  // 1. Calculer le pré-bilan exact du jour (ce que le tiroir devrait contenir)
+  Future<Map<String, dynamic>> preparerClotureJour(String dateDuJour) async {
+    final db = await database;
+
+    // Recettes réelles (Ventes payées comptant + Crédits antérieurs encaissés aujourd'hui)
+    var ventesPayees = await db.rawQuery("SELECT SUM(montant) as total FROM transactions WHERE type = 'SORTIE' AND est_paye = 1 AND statut = 'VALIDEE' AND date LIKE '$dateDuJour%'");
+
+    // Dépenses (Ravitaillements)
+    var depenses = await db.rawQuery("SELECT SUM(montant) as total FROM transactions WHERE type = 'ENTREE' AND statut = 'VALIDEE' AND date LIKE '$dateDuJour%'");
+
+    // Crédits accordés aujourd'hui (Argent dehors)
+    var credits = await db.rawQuery("SELECT SUM(montant) as total FROM transactions WHERE type = 'SORTIE' AND est_paye = 0 AND statut = 'VALIDEE' AND date LIKE '$dateDuJour%'");
+
+    // Nombre total d'opérations de vente
+    var countVentes = await db.rawQuery("SELECT COUNT(id) as total FROM transactions WHERE type = 'SORTIE' AND statut = 'VALIDEE' AND date LIKE '$dateDuJour%'");
+
+    double totalEntrees = (ventesPayees.first['total'] as num?)?.toDouble() ?? 0.0;
+    double totalSorties = (depenses.first['total'] as num?)?.toDouble() ?? 0.0;
+    double totalCreditsAccordes = (credits.first['total'] as num?)?.toDouble() ?? 0.0;
+    int nombreVentes = (countVentes.first['total'] as int?) ?? 0;
+    String topVente = await getTopSellingProduct();
+
+    // Cash Théorique = Entrées réelles - Dépenses du jour
+    double cashTheorique = totalEntrees - totalSorties;
+
+    return {
+      'date_cloture': dateDuJour,
+      'total_entrees': totalEntrees,
+      'total_sorties': totalSorties,
+      'total_credits_accordes': totalCreditsAccordes,
+      'total_credits_encaisses': 0.0, // Réservé pour de futures analyses plus fines
+      'cash_theorique': cashTheorique,
+      'nombre_ventes': nombreVentes,
+      'marque_top_vente': topVente
+    };
+  }
+
+  // 2. Figer et sauvegarder le bilan du jour avec le cash compté manuellement
+  Future<int> enregistrerCloture(Map<String, dynamic> bilanMap) async {
+    final db = await database;
+    // conflictAlgorithm.replace permet d'écraser la clôture si on la refait le même jour
+    return await db.insert('bilans_journaliers', bilanMap, conflictAlgorithm: ConflictAlgorithm.replace);
+  }
+
+  // 3. Lire l'historique complet pour afficher les archives des clôtures passées
+  Future<List<Map<String, dynamic>>> getHistoriqueBilans() async {
+    final db = await database;
+    return await db.query('bilans_journaliers', orderBy: 'date_cloture DESC');
+  }
+
+  // 4. Calculer le rapport global sur une période (ex: la Semaine ou le Mois)
+  Future<Map<String, dynamic>> getRapportHebdomadaire(String dateDebut, String dateFin) async {
+    final db = await database;
+    var res = await db.rawQuery('''
+      SELECT 
+        SUM(total_entrees) as recettes, 
+        SUM(total_sorties) as depenses,
+        SUM(total_credits_accordes) as credits,
+        SUM(nombre_ventes) as ventes
+      FROM bilans_journaliers 
+      WHERE date_cloture BETWEEN ? AND ?
+    ''', [dateDebut, dateFin]);
+
+    if (res.isNotEmpty && res.first['recettes'] != null) {
+      double recettes = (res.first['recettes'] as num).toDouble();
+      double depenses = (res.first['depenses'] as num).toDouble();
+      return {
+        'recettes': recettes,
+        'depenses': depenses,
+        'credits': (res.first['credits'] as num).toDouble(),
+        'ventes': res.first['ventes'] as int,
+        'benefice': recettes - depenses
+      };
+    }
+    return {};
   }
 }
