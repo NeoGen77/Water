@@ -101,8 +101,8 @@ class DBHelper {
     return await db.insert('transactions', transaction.toMap());
   }
 
-  // --- MISE À JOUR : AJOUT DU FILTRE TEMPOREL ---
-  Future<List<TransactionItem>> getAllTransactions({String filter = 'Tout'}) async {
+  // --- MISE À JOUR : AJOUT DE LA PAGINATION (LIMIT / OFFSET) ---
+  Future<List<TransactionItem>> getAllTransactions({String filter = 'Tout', int limit = 20, int offset = 0}) async {
     final db = await database;
 
     String whereClause = 'statut = ?';
@@ -124,9 +124,48 @@ class DBHelper {
         'transactions',
         where: whereClause,
         whereArgs: whereArgs,
-        orderBy: 'id DESC'
+        orderBy: 'id DESC',
+        limit: limit, // Limite le nombre de résultats (ex: 20)
+        offset: offset // Décale le point de départ (ex: sauter les 20 premiers)
     );
     return List.generate(maps.length, (i) => TransactionItem.fromMap(maps[i]));
+  }
+
+  // --- NOUVELLE MÉTHODE : CALCULER LES TOTAUX DIRECTEMENT EN SQL ---
+  // Utile car getAllTransactions ne ramène maintenant qu'une partie des données (ex: 20 lignes)
+  Future<Map<String, double>> getBilanFinancier({String filter = 'Tout'}) async {
+    final db = await database;
+    String whereClause = 'statut = ?';
+    List<dynamic> whereArgs = ['VALIDEE'];
+    DateTime now = DateTime.now();
+
+    if (filter == 'Aujourd\'hui') {
+      whereClause += ' AND date LIKE ?';
+      whereArgs.add('${now.toString().substring(0, 10)}%');
+    } else if (filter == 'Ce mois-ci') {
+      whereClause += ' AND date LIKE ?';
+      whereArgs.add('${now.toString().substring(0, 7)}%');
+    }
+
+    // Demande à SQLite de faire les additions lui-même (très rapide)
+    var resultat = await db.rawQuery('''
+      SELECT type, SUM(montant) as total
+      FROM transactions
+      WHERE $whereClause
+      GROUP BY type
+    ''', whereArgs);
+
+    double recettes = 0;
+    double depenses = 0;
+
+    for (var row in resultat) {
+      if (row['type'] == 'ENTREE') {
+        depenses = (row['total'] as num?)?.toDouble() ?? 0.0;
+      } else if (row['type'] == 'SORTIE') {
+        recettes = (row['total'] as num?)?.toDouble() ?? 0.0;
+      }
+    }
+    return {'recettes': recettes, 'depenses': depenses};
   }
 
   Future<List<TransactionItem>> getTransactionsEnAttente() async {
@@ -167,7 +206,7 @@ class DBHelper {
   }
 
   // ==========================================
-  // NOUVELLES MÉTHODES POUR LA GESTION DES DETTES
+  // MÉTHODES POUR LA GESTION DES DETTES
   // ==========================================
 
   // Marquer une dette comme payée (est_paye passe à 1)
