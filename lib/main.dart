@@ -19,9 +19,6 @@ Future<void> main() async {
     databaseFactory = databaseFactoryFfi;
   }
 
-  // Initialisation de Supabase
-
-
   runApp(const WaterStockApp());
 }
 
@@ -35,23 +32,71 @@ class WaterStockApp extends StatelessWidget {
       debugShowCheckedModeBanner: false,
 
       theme: ThemeData.dark().copyWith(
-        scaffoldBackgroundColor: const Color(0xFF0A0E21),
-        cardColor: const Color(0xFF1D1E33),
+        scaffoldBackgroundColor: const Color(0xFF0A0E21), // Fond principal très sombre
+        cardColor: const Color(0xFF1D1E33),               // Fond des cartes un peu plus clair
+
+        // --- 1. ENTÊTES (APPBAR) LISIBLES ET PROS ---
         appBarTheme: const AppBarTheme(
           backgroundColor: Color(0xFF0A0E21),
           elevation: 0,
           centerTitle: true,
+          titleTextStyle: TextStyle(
+            color: Colors.white, // Blanc pur pour que le titre ressorte
+            fontWeight: FontWeight.bold,
+            fontSize: 22,
+            letterSpacing: 1.0,
+          ),
+          iconTheme: IconThemeData(color: Colors.white, size: 28),
         ),
+
+        // --- 2. BARRE DE NAVIGATION EN BAS ---
         bottomNavigationBarTheme: const BottomNavigationBarThemeData(
           backgroundColor: Color(0xFF1D1E33),
-          selectedItemColor: Color(0xFF4C4DDC),
-          unselectedItemColor: Colors.grey,
+          selectedItemColor: Color(0xFF4C4DDC), // Ton bleu brillant pour l'onglet actif
+          unselectedItemColor: Colors.white38,  // Gris clair pour les onglets inactifs (pas fade)
         ),
+
+        // --- 3. PALETTE DE COULEURS GLOBALE ---
         colorScheme: ColorScheme.fromSwatch().copyWith(
           primary: const Color(0xFF4C4DDC),
           secondary: const Color(0xFF00E676),
           error: const Color(0xFFFF5252),
           brightness: Brightness.dark,
+        ),
+
+        // --- 4. FORMULAIRES DE SAISIE PRO (Nouvelle marque, Quantité...) ---
+        inputDecorationTheme: InputDecorationTheme(
+          filled: true,
+          fillColor: const Color(0xFF1D1E33), // Le champ a la même couleur que les cartes
+          // Le texte au-dessus du champ (Label)
+          labelStyle: const TextStyle(
+            color: Colors.white70,
+            fontWeight: FontWeight.w600,
+            fontSize: 16,
+          ),
+          hintStyle: const TextStyle(color: Colors.white38),
+          // Bordure normale au repos
+          enabledBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(12),
+            borderSide: const BorderSide(color: Colors.white24, width: 1.5),
+          ),
+          // Bordure bleue bien visible quand tu cliques pour taper le texte
+          focusedBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(12),
+            borderSide: const BorderSide(color: Color(0xFF4C4DDC), width: 2.5),
+          ),
+          // Bordure rouge en cas d'erreur
+          errorBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(12),
+            borderSide: const BorderSide(color: Color(0xFFFF5252), width: 2),
+          ),
+        ),
+
+        // --- 5. TEXTES GLOBAUX CONTRASTÉS ---
+        textTheme: const TextTheme(
+          titleLarge: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 20), // Noms des interfaces
+          bodyLarge: TextStyle(color: Colors.white, fontWeight: FontWeight.w600, fontSize: 16),  // Chiffres et données importantes
+          bodyMedium: TextStyle(color: Colors.white70, fontSize: 14),                            // Textes descriptifs
         ),
       ),
       // ON DÉMARRE SUR LE LOGIN
@@ -78,7 +123,6 @@ class _MainNavigationState extends State<MainNavigation> {
     // 1. On construit la liste des écrans selon le rôle
     List<Widget> screens = [
       const DashboardScreen(),
-      // LA MODIFICATION EST ICI : On passe la variable isAdmin
       OperationsScreen(isAdmin: widget.isAdmin),
     ];
 
