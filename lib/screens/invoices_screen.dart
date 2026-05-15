@@ -2,9 +2,10 @@ import 'package:flutter/material.dart';
 import '../database/db_helper.dart';
 import '../models/transaction_item.dart';
 import '../models/water_item.dart';
+import '../services/backup_service.dart'; // NOUVEAU : Import de la sauvegarde locale
 import 'validations_screen.dart';
 import 'reports_screen.dart';
-import 'debts_screen.dart'; // NOUVEAU : Import de la page des dettes
+import 'debts_screen.dart';
 
 class InvoicesScreen extends StatefulWidget {
   const InvoicesScreen({super.key});
@@ -16,14 +17,13 @@ class InvoicesScreen extends StatefulWidget {
 class _InvoicesScreenState extends State<InvoicesScreen> {
   // --- VARIABLES POUR LA PAGINATION ---
   final ScrollController _scrollController = ScrollController();
-  List<TransactionItem> _transactions = [];
+  final List<TransactionItem> _transactions = []; // CORRECTION : rendu "final"
   bool _isLoading = false;
   bool _hasMore = true;
   int _offset = 0;
   final int _limit = 20;
 
   // --- VARIABLES EXISTANTES ---
-  String _topProduit = "...";
   String _filtreActuel = 'Tout';
 
   double _valeurTotaleStock = 0;
@@ -84,10 +84,6 @@ class _InvoicesScreenState extends State<InvoicesScreen> {
   }
 
   void _chargerStatistiques() {
-    DBHelper().getTopSellingProduct().then((top) {
-      if (mounted) setState(() => _topProduit = top);
-    });
-
     DBHelper().getBilanFinancier(filter: _filtreActuel).then((bilan) {
       if (mounted) {
         setState(() {
@@ -130,19 +126,90 @@ class _InvoicesScreenState extends State<InvoicesScreen> {
       appBar: AppBar(
         title: const Text('Historique & Caisse'),
         actions: [
+          // NOUVEAU BOUTON : Sauvegarde & Restauration Locale
+          PopupMenuButton<String>(
+            icon: const Icon(Icons.security, color: Colors.greenAccent),
+            tooltip: 'Sécurité et Sauvegardes',
+            onSelected: (String choix) async {
+              // On capture le ScaffoldMessenger avant le await pour éviter l'erreur Async Gap
+              final messenger = ScaffoldMessenger.of(context);
 
-          // NOUVEAU BOUTON : Accès aux Rapports Journaliers
+              if (choix == 'sauvegarder') {
+                bool succes = await BackupService.creerCopieLocale();
+                if (!mounted) return;
+                if (succes) {
+                  messenger.showSnackBar(
+                    const SnackBar(content: Text('✅ Sauvegarde créée dans vos dossiers !'), backgroundColor: Colors.green),
+                  );
+                }
+              } else if (choix == 'restaurer') {
+                // Demande de confirmation avant d'écraser la base
+                bool? confirmer = await showDialog<bool>(
+                  context: context,
+                  builder: (ctx) => AlertDialog(
+                    title: const Text("Attention", style: TextStyle(color: Colors.red)),
+                    content: const Text("Cela remplacera toutes vos données actuelles par le fichier de sauvegarde. Voulez-vous continuer ?"),
+                    actions: [
+                      TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text("Annuler")),
+                      ElevatedButton(
+                        style: ElevatedButton.styleFrom(backgroundColor: Colors.red, foregroundColor: Colors.white),
+                        onPressed: () => Navigator.pop(ctx, true),
+                        child: const Text("Restaurer"),
+                      ),
+                    ],
+                  ),
+                );
+
+                if (confirmer == true) {
+                  bool succes = await BackupService.restaurerCopieLocale();
+                  if (!mounted) return;
+                  if (succes) {
+                    messenger.showSnackBar(
+                      const SnackBar(content: Text('🔄 Données restaurées ! Veuillez relancer l\'application.'), backgroundColor: Colors.blue),
+                    );
+                  }
+                }
+              }
+            },
+            itemBuilder: (BuildContext context) {
+              return [
+                const PopupMenuItem<String>(
+                  value: 'sauvegarder',
+                  child: Row(
+                    children: [
+                      Icon(Icons.download, color: Colors.green),
+                      SizedBox(width: 10),
+                      Text('Créer une sauvegarde'),
+                    ],
+                  ),
+                ),
+                const PopupMenuItem<String>(
+                  value: 'restaurer',
+                  child: Row(
+                    children: [
+                      Icon(Icons.restore, color: Colors.orange),
+                      SizedBox(width: 10),
+                      Text('Restaurer une copie'),
+                    ],
+                  ),
+                ),
+              ];
+            },
+          ),
+
+          // BOUTON : Accès aux Rapports Journaliers
           IconButton(
             icon: const Icon(Icons.bar_chart, color: Colors.indigo),
             tooltip: 'Rapports Journaliers',
             onPressed: () {
               Navigator.push(
                 context,
-                MaterialPageRoute(builder: (context) => const ReportsScreen()), // Assure-toi d'importer le fichier en haut !
+                MaterialPageRoute(builder: (context) => const ReportsScreen()),
               );
             },
           ),
-          // NOUVEAU BOUTON : Accès direct à l'écran des dettes
+
+          // BOUTON : Accès direct à l'écran des dettes
           IconButton(
             icon: const Icon(Icons.menu_book, color: Colors.redAccent),
             tooltip: 'Suivi des Crédits / Dettes',
@@ -151,7 +218,6 @@ class _InvoicesScreenState extends State<InvoicesScreen> {
                 context,
                 MaterialPageRoute(builder: (context) => const DebtsScreen()),
               );
-              // Quand on revient, on rafraîchit tout car une dette a pu être encaissée !
               _initialiserEcran();
             },
           ),
@@ -190,6 +256,7 @@ class _InvoicesScreenState extends State<InvoicesScreen> {
               }).toList();
             },
           ),
+
           IconButton(
             icon: const Icon(Icons.fact_check_outlined, color: Colors.orangeAccent),
             tooltip: 'Saisies en attente',
@@ -233,7 +300,7 @@ class _InvoicesScreenState extends State<InvoicesScreen> {
                       child: _buildTotalCard(
                         titre: 'Dépenses',
                         valeur: '${_totalDepenses.toInt()} F',
-                        couleur: Colors.blueAccent,
+                        couleur: Colors.redAccent, // Mis en rouge pour contraster avec recettes
                         icone: Icons.arrow_downward,
                       ),
                     ),
@@ -242,7 +309,7 @@ class _InvoicesScreenState extends State<InvoicesScreen> {
                       child: _buildTotalCard(
                         titre: 'Recettes',
                         valeur: '${_totalRecettes.toInt()} F',
-                        couleur: Colors.greenAccent,
+                        couleur: Colors.green,
                         icone: Icons.arrow_upward,
                       ),
                     ),
@@ -266,6 +333,7 @@ class _InvoicesScreenState extends State<InvoicesScreen> {
                             "${(_totalRecettes - _totalDepenses).toInt()} FCFA",
                             style: TextStyle(
                               fontWeight: FontWeight.bold,
+                              fontSize: 16,
                               color: (_totalRecettes - _totalDepenses) >= 0 ? Colors.green : Colors.red,
                             ),
                           ),
@@ -355,7 +423,10 @@ class _InvoicesScreenState extends State<InvoicesScreen> {
 
                 return Card(
                   margin: const EdgeInsets.symmetric(vertical: 6, horizontal: 4),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    side: BorderSide(color: Colors.grey.shade200, width: 1),
+                  ),
                   child: ListTile(
                     leading: CircleAvatar(
                       backgroundColor: estEntree
@@ -368,7 +439,7 @@ class _InvoicesScreenState extends State<InvoicesScreen> {
                     ),
                     title: Text(
                       '${trans.marque} (${estEntree ? "Ravitaillement" : "Vente"})',
-                      style: const TextStyle(fontWeight: FontWeight.bold),
+                      style: const TextStyle(fontWeight: FontWeight.bold, color: Color(0xFF1A237E)),
                     ),
                     subtitle: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
@@ -406,7 +477,7 @@ class _InvoicesScreenState extends State<InvoicesScreen> {
                             style: TextStyle(
                               fontSize: 18,
                               fontWeight: FontWeight.bold,
-                              color: estEntree ? Colors.blueAccent : Colors.greenAccent,
+                              color: estEntree ? Colors.blueAccent : Colors.green,
                             ),
                           ),
                           const SizedBox(height: 2),
@@ -416,7 +487,7 @@ class _InvoicesScreenState extends State<InvoicesScreen> {
                           ),
                           const SizedBox(height: 4),
                           Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 0),
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
                             decoration: BoxDecoration(
                               color: trans.estPaye ? Colors.green.withValues(alpha: 0.2) : Colors.red.withValues(alpha: 0.2),
                               borderRadius: BorderRadius.circular(8),
@@ -425,6 +496,7 @@ class _InvoicesScreenState extends State<InvoicesScreen> {
                               trans.estPaye ? 'Payé' : 'À crédit',
                               style: TextStyle(
                                 fontSize: 12,
+                                fontWeight: FontWeight.bold,
                                 color: trans.estPaye ? Colors.green : Colors.redAccent,
                               ),
                             ),
@@ -456,13 +528,13 @@ class _InvoicesScreenState extends State<InvoicesScreen> {
           const SizedBox(height: 6),
           Text(
             valeur,
-            style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: couleur),
+            style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: couleur),
           ),
           const SizedBox(height: 2),
           Text(
             titre,
             textAlign: TextAlign.center,
-            style: const TextStyle(fontSize: 12, color: Colors.grey, fontWeight: FontWeight.w500),
+            style: const TextStyle(fontSize: 12, color: Colors.black87, fontWeight: FontWeight.w600),
           ),
         ],
       ),

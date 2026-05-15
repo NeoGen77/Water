@@ -8,7 +8,6 @@ import 'screens/dashboard_screen.dart';
 import 'screens/operations_screen.dart';
 import 'screens/invoices_screen.dart';
 import 'screens/profile_screen.dart';
-import 'package:supabase_flutter/supabase_flutter.dart'; // LA ligne POUR SUPABASE
 
 Future<void> main() async {
   // S'assure que les widgets sont prêts avant d'initialiser des bases de données

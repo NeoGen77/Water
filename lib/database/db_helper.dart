@@ -353,4 +353,15 @@ class DBHelper {
     final db = await database;
     await db.insert('transactions', map, conflictAlgorithm: ConflictAlgorithm.replace);
   }
+
+  // ==========================================
+  // FERMETURE DE LA BASE (Utile pour la restauration)
+  // ==========================================
+  Future<void> fermerBaseDeDonnees() async {
+    if (_database != null) {
+      await _database!.close(); // Ferme la connexion active
+      _database = null;         // Réinitialise la mémoire
+      print("Base de données fermée avec succès.");
+    }
+  }
 }

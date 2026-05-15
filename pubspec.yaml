@@ -34,7 +34,7 @@ dependencies:
   cupertino_icons: ^1.0.8
   sqflite: ^2.3.3+1      # Moteur de base de données
   path: ^1.9.0            # Gestion des chemins de fichiers
-  supabase_flutter: ^2.12.4
+  file_picker: ^8.0.0
 dev_dependencies:
   flutter_test:
     sdk: flutter
