@@ -2,10 +2,11 @@ import 'package:flutter/material.dart';
 import '../database/db_helper.dart';
 import '../models/transaction_item.dart';
 import '../models/water_item.dart';
-import '../services/backup_service.dart'; // NOUVEAU : Import de la sauvegarde locale
+import '../services/backup_service.dart';
 import 'validations_screen.dart';
 import 'reports_screen.dart';
 import 'debts_screen.dart';
+import '../services/pdf_service.dart'; // Import du service PDF
 
 class InvoicesScreen extends StatefulWidget {
   const InvoicesScreen({super.key});
@@ -17,7 +18,7 @@ class InvoicesScreen extends StatefulWidget {
 class _InvoicesScreenState extends State<InvoicesScreen> {
   // --- VARIABLES POUR LA PAGINATION ---
   final ScrollController _scrollController = ScrollController();
-  final List<TransactionItem> _transactions = []; // CORRECTION : rendu "final"
+  final List<TransactionItem> _transactions = [];
   bool _isLoading = false;
   bool _hasMore = true;
   int _offset = 0;
@@ -170,9 +171,8 @@ class _InvoicesScreenState extends State<InvoicesScreen> {
                 style: ElevatedButton.styleFrom(backgroundColor: Colors.red, foregroundColor: Colors.white),
                 onPressed: () async {
                   if (codeController.text == _codeSecret) {
-                    Navigator.pop(ctx); // Ferme la boîte de dialogue
+                    Navigator.pop(ctx);
 
-                    // Lance l'annulation dans la base de données
                     bool succes = await DBHelper().annulerTransaction(trans.id!);
 
                     if (!mounted) return;
@@ -180,14 +180,13 @@ class _InvoicesScreenState extends State<InvoicesScreen> {
                       ScaffoldMessenger.of(context).showSnackBar(
                         const SnackBar(content: Text('✅ Transaction annulée et stock restauré !'), backgroundColor: Colors.green),
                       );
-                      _initialiserEcran(); // Rafraîchit les totaux et la liste
+                      _initialiserEcran();
                     } else {
                       ScaffoldMessenger.of(context).showSnackBar(
                         const SnackBar(content: Text('❌ Erreur lors de l\'annulation.'), backgroundColor: Colors.red),
                       );
                     }
                   } else {
-                    // Mauvais code
                     ScaffoldMessenger.of(context).showSnackBar(
                       const SnackBar(content: Text('❌ Code incorrect. Action refusée.'), backgroundColor: Colors.red),
                     );
@@ -548,43 +547,65 @@ class _InvoicesScreenState extends State<InvoicesScreen> {
                         ),
                       ],
                     ),
-                    trailing: FittedBox(
-                      fit: BoxFit.scaleDown,
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        crossAxisAlignment: CrossAxisAlignment.end,
-                        children: [
-                          Text(
-                            '${trans.montant.toInt()} FCFA',
-                            style: TextStyle(
-                              fontSize: 18,
-                              fontWeight: FontWeight.bold,
-                              color: estEntree ? Colors.blueAccent : Colors.green,
-                            ),
-                          ),
-                          const SizedBox(height: 2),
-                          Text(
-                            '${estEntree ? "+" : "-"}${trans.quantite} paquets',
-                            style: const TextStyle(fontSize: 12, color: Colors.grey),
-                          ),
-                          const SizedBox(height: 4),
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                            decoration: BoxDecoration(
-                              color: trans.estPaye ? Colors.green.withValues(alpha: 0.2) : Colors.red.withValues(alpha: 0.2),
-                              borderRadius: BorderRadius.circular(8),
-                            ),
-                            child: Text(
-                              trans.estPaye ? 'Payé' : 'À crédit',
-                              style: TextStyle(
-                                fontSize: 12,
-                                fontWeight: FontWeight.bold,
-                                color: trans.estPaye ? Colors.green : Colors.redAccent,
+                    // --- NOUVEAU TRAILING AVEC LE BOUTON PDF ---
+                    trailing: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        // Le bloc des montants existant
+                        FittedBox(
+                          fit: BoxFit.scaleDown,
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            crossAxisAlignment: CrossAxisAlignment.end,
+                            children: [
+                              Text(
+                                '${trans.montant.toInt()} FCFA',
+                                style: TextStyle(
+                                  fontSize: 18,
+                                  fontWeight: FontWeight.bold,
+                                  color: estEntree ? Colors.blueAccent : Colors.green,
+                                ),
                               ),
-                            ),
+                              const SizedBox(height: 2),
+                              Text(
+                                '${estEntree ? "+" : "-"}${trans.quantite} paquets',
+                                style: const TextStyle(fontSize: 12, color: Colors.grey),
+                              ),
+                              const SizedBox(height: 4),
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                                decoration: BoxDecoration(
+                                  color: trans.estPaye ? Colors.green.withValues(alpha: 0.2) : Colors.red.withValues(alpha: 0.2),
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                                child: Text(
+                                  trans.estPaye ? 'Payé' : 'À crédit',
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.bold,
+                                    color: trans.estPaye ? Colors.green : Colors.redAccent,
+                                  ),
+                                ),
+                              ),
+                            ],
                           ),
-                        ],
-                      ),
+                        ),
+
+                        const SizedBox(width: 10),
+
+                        // Le bouton pour exporter la facture (uniquement pour les sorties/ventes)
+                        if (!estEntree)
+                          IconButton(
+                            icon: const Icon(Icons.picture_as_pdf, color: Colors.indigoAccent),
+                            tooltip: 'Exporter la facture',
+                            onPressed: () async {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(content: Text('Génération de la facture...'), duration: Duration(seconds: 1)),
+                              );
+                              await PdfService.exporterFacture(trans);
+                            },
+                          ),
+                      ],
                     ),
                   ),
                 );
