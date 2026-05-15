@@ -364,4 +364,62 @@ class DBHelper {
       print("Base de données fermée avec succès.");
     }
   }
+  // ==========================================
+  // ANNULATION D'UNE TRANSACTION AVEC CORRECTION DE STOCK
+  // ==========================================
+  Future<bool> annulerTransaction(int idTransaction) async {
+    final db = await database;
+    try {
+      // On utilise txn (Transaction SQL) pour garantir que si une étape échoue, tout s'annule
+      await db.transaction((txn) async {
+
+        // 1. Récupérer les détails de la transaction avant de la supprimer
+        final List<Map<String, dynamic>> transData = await txn.query(
+            'transactions',
+            where: 'id = ?',
+            whereArgs: [idTransaction]
+        );
+
+        if (transData.isEmpty) return; // La transaction n'existe plus
+
+        int waterItemId = transData.first['water_item_id'];
+        int quantite = transData.first['quantite'];
+        String type = transData.first['type'];
+
+        // 2. Récupérer le stock actuel de cet article
+        final List<Map<String, dynamic>> itemData = await txn.query(
+            'water_items',
+            where: 'id = ?',
+            whereArgs: [waterItemId]
+        );
+
+        if (itemData.isNotEmpty) {
+          int stockActuel = itemData.first['quantite'];
+
+          // 3. Calculer le nouveau stock (Inverser l'opération)
+          // Si on avait vendu (SORTIE), on remet le stock (+). Si on avait ravitaillé (ENTREE), on l'enlève (-).
+          int nouveauStock = type == 'SORTIE' ? (stockActuel + quantite) : (stockActuel - quantite);
+
+          // Mettre à jour le stock
+          await txn.update(
+              'water_items',
+              {'quantite': nouveauStock},
+              where: 'id = ?',
+              whereArgs: [waterItemId]
+          );
+        }
+
+        // 4. Supprimer définitivement la transaction de l'historique
+        await txn.delete(
+            'transactions',
+            where: 'id = ?',
+            whereArgs: [idTransaction]
+        );
+      });
+      return true; // Succès
+    } catch (e) {
+      print("Erreur lors de l'annulation de la transaction : $e");
+      return false; // Échec
+    }
+  }
 }

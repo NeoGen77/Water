@@ -33,6 +33,9 @@ class _InvoicesScreenState extends State<InvoicesScreen> {
   double _totalRecettes = 0;
   double _totalDepenses = 0;
 
+  // Code secret de sécurité
+  final String _codeSecret = "98521";
+
   @override
   void initState() {
     super.initState();
@@ -120,18 +123,95 @@ class _InvoicesScreenState extends State<InvoicesScreen> {
     });
   }
 
+  // --- FONCTION D'ANNULATION ---
+  void _afficherBoiteAnnulation(BuildContext context, TransactionItem trans) {
+    final TextEditingController codeController = TextEditingController();
+
+    showDialog(
+        context: context,
+        builder: (ctx) {
+          return AlertDialog(
+            title: const Row(
+              children: [
+                Icon(Icons.warning_amber_rounded, color: Colors.red),
+                SizedBox(width: 8),
+                Text("Annuler la saisie", style: TextStyle(color: Colors.red, fontSize: 18)),
+              ],
+            ),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  "Vous êtes sur le point de supprimer cette ${trans.type == 'SORTIE' ? 'vente' : 'entrée'} de ${trans.quantite} ${trans.marque}.",
+                  style: const TextStyle(fontWeight: FontWeight.bold),
+                ),
+                const SizedBox(height: 8),
+                const Text("Le montant sera retiré de la caisse et le stock d'eau sera corrigé automatiquement.", style: TextStyle(fontSize: 13, color: Colors.grey)),
+                const SizedBox(height: 15),
+                TextField(
+                  controller: codeController,
+                  keyboardType: TextInputType.number,
+                  obscureText: true, // Cache le code (astérisques)
+                  decoration: InputDecoration(
+                    labelText: 'Code administrateur',
+                    prefixIcon: const Icon(Icons.lock_outline),
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                  ),
+                ),
+              ],
+            ),
+            actions: [
+              TextButton(
+                  onPressed: () => Navigator.pop(ctx),
+                  child: const Text("Fermer", style: TextStyle(color: Colors.grey))
+              ),
+              ElevatedButton(
+                style: ElevatedButton.styleFrom(backgroundColor: Colors.red, foregroundColor: Colors.white),
+                onPressed: () async {
+                  if (codeController.text == _codeSecret) {
+                    Navigator.pop(ctx); // Ferme la boîte de dialogue
+
+                    // Lance l'annulation dans la base de données
+                    bool succes = await DBHelper().annulerTransaction(trans.id!);
+
+                    if (!mounted) return;
+                    if (succes) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text('✅ Transaction annulée et stock restauré !'), backgroundColor: Colors.green),
+                      );
+                      _initialiserEcran(); // Rafraîchit les totaux et la liste
+                    } else {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text('❌ Erreur lors de l\'annulation.'), backgroundColor: Colors.red),
+                      );
+                    }
+                  } else {
+                    // Mauvais code
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('❌ Code incorrect. Action refusée.'), backgroundColor: Colors.red),
+                    );
+                  }
+                },
+                child: const Text("Confirmer"),
+              ),
+            ],
+          );
+        }
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Historique & Caisse'),
         actions: [
-          // NOUVEAU BOUTON : Sauvegarde & Restauration Locale
+          // BOUTON : Sauvegarde & Restauration Locale
           PopupMenuButton<String>(
             icon: const Icon(Icons.security, color: Colors.greenAccent),
             tooltip: 'Sécurité et Sauvegardes',
             onSelected: (String choix) async {
-              // On capture le ScaffoldMessenger avant le await pour éviter l'erreur Async Gap
               final messenger = ScaffoldMessenger.of(context);
 
               if (choix == 'sauvegarder') {
@@ -143,7 +223,6 @@ class _InvoicesScreenState extends State<InvoicesScreen> {
                   );
                 }
               } else if (choix == 'restaurer') {
-                // Demande de confirmation avant d'écraser la base
                 bool? confirmer = await showDialog<bool>(
                   context: context,
                   builder: (ctx) => AlertDialog(
@@ -300,7 +379,7 @@ class _InvoicesScreenState extends State<InvoicesScreen> {
                       child: _buildTotalCard(
                         titre: 'Dépenses',
                         valeur: '${_totalDepenses.toInt()} F',
-                        couleur: Colors.redAccent, // Mis en rouge pour contraster avec recettes
+                        couleur: Colors.redAccent,
                         icone: Icons.arrow_downward,
                       ),
                     ),
@@ -428,6 +507,9 @@ class _InvoicesScreenState extends State<InvoicesScreen> {
                     side: BorderSide(color: Colors.grey.shade200, width: 1),
                   ),
                   child: ListTile(
+                    // LIAISON DE L'APPUI LONG ICI
+                    onLongPress: () => _afficherBoiteAnnulation(context, trans),
+
                     leading: CircleAvatar(
                       backgroundColor: estEntree
                           ? Colors.blueAccent.withValues(alpha: 0.2)
