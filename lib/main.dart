@@ -21,10 +21,7 @@ Future<void> main() async {
   }
 
   // Initialisation de Supabase
-  await Supabase.initialize(
-    url: 'https://tsjbhknzswlykydvpdgv.supabase.co',
-    anonKey: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRzamJoa256c3dseWt5ZHZwZGd2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg2MjAyODgsImV4cCI6MjA5NDE5NjI4OH0.QdXEE-hyOdfXhQvbKr5nJfjcR82m3eGVIm6_6WRWTeU',            // Remplace par ta vraie clé publique
-  );
+
 
   runApp(const WaterStockApp());
 }
