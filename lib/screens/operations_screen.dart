@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart'; // IMPORT NÉCESSAIRE POUR BLOQUER LES LETTRES
 import '../database/db_helper.dart';
 import '../models/water_item.dart';
 import '../models/transaction_item.dart';
@@ -54,7 +55,7 @@ class _OperationsScreenState extends State<OperationsScreen> {
                 context,
                 titre: '📥 Ravitaillement',
                 sousTitre: 'Entrée de stock (Grossiste)',
-                couleur: Colors.blueAccent,
+                couleur: const Color(0xFF4C4DDC), // Adapté au thème Dark
                 onTap: () => _ouvrirFormulaireOperation(context, true)
             ),
             const SizedBox(height: 20),
@@ -62,7 +63,7 @@ class _OperationsScreenState extends State<OperationsScreen> {
                 context,
                 titre: '📤 Nouvelle Vente',
                 sousTitre: 'Sortie de paquets',
-                couleur: Colors.greenAccent,
+                couleur: const Color(0xFF00E676), // Adapté au thème Dark
                 onTap: () => _ouvrirFormulaireOperation(context, false)
             ),
           ],
@@ -87,7 +88,7 @@ class _OperationsScreenState extends State<OperationsScreen> {
           children: [
             Text(titre, style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: couleur)),
             const SizedBox(height: 10),
-            Text(sousTitre, style: const TextStyle(color: Colors.grey)),
+            Text(sousTitre, style: const TextStyle(color: Colors.white70)),
           ],
         ),
       ),
@@ -106,8 +107,6 @@ class FormulaireOperation extends StatefulWidget {
   State<FormulaireOperation> createState() => _FormulaireOperationState();
 }
 
-// ... Garde le début du fichier identique (Imports et OperationsScreen) ...
-
 class _FormulaireOperationState extends State<FormulaireOperation> {
   WaterItem? _produitSelectionne;
   final TextEditingController _quantiteController = TextEditingController();
@@ -118,6 +117,19 @@ class _FormulaireOperationState extends State<FormulaireOperation> {
   void _validerOperation() async {
     if (_produitSelectionne != null && _quantiteController.text.isNotEmpty) {
       int quantiteSaisie = int.parse(_quantiteController.text);
+
+      // --- SÉCURITÉ 1 : BLOCAGE DU STOCK NÉGATIF ---
+      if (!widget.estRavitaillement && quantiteSaisie > _produitSelectionne!.quantite) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('❌ Stock insuffisant ! Il ne reste que ${_produitSelectionne!.quantite} paquets de ${_produitSelectionne!.marque}.'),
+            backgroundColor: Colors.redAccent,
+            duration: const Duration(seconds: 4),
+          ),
+        );
+        return; // Stoppe l'opération ici, rien n'est sauvegardé
+      }
+
       double montantCalcule = 0;
 
       if (widget.estRavitaillement) {
@@ -137,7 +149,6 @@ class _FormulaireOperationState extends State<FormulaireOperation> {
         date: DateTime.now().toString().substring(0, 16),
         estPaye: _estPaye,
         statut: statutOperation,
-        // On enregistre le nom peu importe si c'est payé ou non
         nomClient: _nomClientController.text.isEmpty ? "Client Anonyme" : _nomClientController.text,
       );
 
@@ -152,8 +163,16 @@ class _FormulaireOperationState extends State<FormulaireOperation> {
 
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(widget.isAdmin ? 'Enregistré !' : 'Envoyé pour vérification'),
+          content: Text(widget.isAdmin ? '✅ Opération enregistrée !' : '⏳ Envoyé pour vérification'),
           backgroundColor: widget.isAdmin ? Colors.green : Colors.orange,
+        ),
+      );
+    } else {
+      // Petite alerte si on clique sur valider sans avoir rempli la quantité
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Veuillez sélectionner une marque et entrer une quantité.'),
+          backgroundColor: Colors.redAccent,
         ),
       );
     }
@@ -172,14 +191,18 @@ class _FormulaireOperationState extends State<FormulaireOperation> {
                 style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold)
             ),
             const SizedBox(height: 20),
+
             DropdownButtonFormField<WaterItem>(
               decoration: const InputDecoration(labelText: 'Marque', border: OutlineInputBorder()),
-              items: widget.produits.map((item) => DropdownMenuItem(value: item, child: Text('${item.marque} - ${item.format}'))).toList(),
+              items: widget.produits.map((item) => DropdownMenuItem(
+                  value: item,
+                  // On affiche le stock actuel dans le menu déroulant pour aider le vendeur
+                  child: Text('${item.marque} - ${item.format} (Stock: ${item.quantite})')
+              )).toList(),
               onChanged: (val) => setState(() => _produitSelectionne = val),
             ),
             const SizedBox(height: 15),
 
-            // CHAMP NOM DU CLIENT (TOUJOURS VISIBLE MAINTENANT)
             TextField(
               controller: _nomClientController,
               decoration: const InputDecoration(
@@ -194,15 +217,18 @@ class _FormulaireOperationState extends State<FormulaireOperation> {
             TextField(
               controller: _quantiteController,
               keyboardType: TextInputType.number,
+              // --- SÉCURITÉ 2 : FILTRE STRICT POUR CHIFFRES UNIQUEMENT ---
+              inputFormatters: [FilteringTextInputFormatter.digitsOnly],
               decoration: const InputDecoration(labelText: 'Nombre de Paquets', border: OutlineInputBorder()),
             ),
 
-            // ... Reste du build (Montant Total si ravitaillement et Switch Paiement) ...
             if (widget.estRavitaillement) ...[
               const SizedBox(height: 15),
               TextField(
                 controller: _montantTotalController,
                 keyboardType: TextInputType.number,
+                // --- SÉCURITÉ 2 : FILTRE STRICT POUR CHIFFRES UNIQUEMENT ---
+                inputFormatters: [FilteringTextInputFormatter.digitsOnly],
                 decoration: const InputDecoration(labelText: 'Montant Total Payé', border: OutlineInputBorder(), prefixText: 'FCFA '),
               ),
             ],
@@ -210,7 +236,7 @@ class _FormulaireOperationState extends State<FormulaireOperation> {
             SwitchListTile(
               title: const Text('Paiement effectué'),
               value: _estPaye,
-              activeColor: Colors.greenAccent,
+              activeThumbColor: const Color(0xFF00E676),
               onChanged: (val) => setState(() => _estPaye = val),
             ),
 
@@ -220,11 +246,11 @@ class _FormulaireOperationState extends State<FormulaireOperation> {
               height: 50,
               child: ElevatedButton(
                 style: ElevatedButton.styleFrom(
-                    backgroundColor: widget.isAdmin ? (widget.estRavitaillement ? Colors.blueAccent : Colors.greenAccent) : Colors.orangeAccent,
+                    backgroundColor: widget.isAdmin ? (widget.estRavitaillement ? const Color(0xFF4C4DDC) : const Color(0xFF00E676)) : Colors.orangeAccent,
                     foregroundColor: Colors.white
                 ),
                 onPressed: _validerOperation,
-                child: Text(widget.isAdmin ? 'Valider' : 'Envoyer pour vérification', style: const TextStyle(fontSize: 18)),
+                child: Text(widget.isAdmin ? 'Valider' : 'Envoyer pour vérification', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
               ),
             ),
             const SizedBox(height: 20),

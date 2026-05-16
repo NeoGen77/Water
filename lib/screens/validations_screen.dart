@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../database/db_helper.dart';
 import '../models/transaction_item.dart';
+import '../models/water_item.dart';
 
 class ValidationsScreen extends StatefulWidget {
   const ValidationsScreen({super.key});
@@ -26,33 +27,60 @@ class _ValidationsScreenState extends State<ValidationsScreen> {
 
   // Fonction pour APPROUVER une saisie
   void _approuver(TransactionItem trans) async {
+    // --- SÉCURITÉ OPTION A : VÉRIFICATION DU STOCK AVANT VALIDATION ---
+    if (trans.type == 'SORTIE') {
+      // On récupère l'état actuel du produit en base
+      List<WaterItem> produits = await DBHelper().getAllItems();
+      WaterItem produitConcerne = produits.firstWhere((p) => p.id == trans.waterItemId);
+
+      // Si le stock a baissé entre-temps et ne suffit plus
+      if (trans.quantite > produitConcerne.quantite) {
+        if (!mounted) return; // Sécurité Async
+        showDialog(
+          context: context,
+          builder: (ctx) => AlertDialog(
+            title: const Text("Stock Insuffisant", style: TextStyle(color: Colors.redAccent)),
+            content: Text(
+                "Impossible de valider : la secrétaire a saisi ${trans.quantite} paquets, mais il n'en reste que ${produitConcerne.quantite} en stock de ${trans.marque}."),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx),
+                child: const Text("Compris"),
+              ),
+            ],
+          ),
+        );
+        return; // On bloque la validation
+      }
+    }
+
     // 1. On change le statut en 'VALIDEE'
     await DBHelper().validerTransaction(trans.id!);
 
-    // 2. On met à jour le stock (C'est SEULEMENT maintenant que le stock bouge !)
+    // 2. On met à jour le stock
     int variation = trans.type == 'ENTREE' ? trans.quantite : -trans.quantite;
     await DBHelper().updateStock(trans.waterItemId, variation);
 
     // 3. On rafraîchit l'écran et on notifie
     _chargerEnAttente();
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Opération validée ! Stock mis à jour.'), backgroundColor: Colors.green),
-      );
-    }
+
+    if (!mounted) return; // Correction Async Gap
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('✅ Opération validée ! Stock mis à jour.'), backgroundColor: Colors.green),
+    );
   }
 
-  // Fonction pour REJETER une saisie (erreur de la secrétaire)
+  // Fonction pour REJETER une saisie
   void _rejeter(TransactionItem trans) async {
     // On supprime purement et simplement le brouillon
     await DBHelper().supprimerTransaction(trans.id!);
 
     _chargerEnAttente();
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Opération rejetée et supprimée.'), backgroundColor: Colors.redAccent),
-      );
-    }
+
+    if (!mounted) return; // Correction Async Gap
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('❌ Opération rejetée et supprimée.'), backgroundColor: Colors.redAccent),
+    );
   }
 
   @override
@@ -67,14 +95,14 @@ class _ValidationsScreenState extends State<ValidationsScreen> {
           if (snapshot.connectionState == ConnectionState.waiting) {
             return const Center(child: CircularProgressIndicator());
           } else if (!snapshot.hasData || snapshot.data!.isEmpty) {
-            return const Center(
+            return Center(
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  Icon(Icons.check_circle_outline, size: 80, color: Colors.greenAccent),
-                  SizedBox(height: 20),
-                  Text('Tout est à jour !', style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
-                  Text('Aucune saisie en attente.', style: TextStyle(color: Colors.grey)),
+                  const Icon(Icons.check_circle_outline, size: 80, color: Color(0xFF00E676)),
+                  const SizedBox(height: 20),
+                  Text('Tout est à jour !', style: Theme.of(context).textTheme.titleLarge),
+                  const Text('Aucune saisie en attente.', style: TextStyle(color: Colors.white54)),
                 ],
               ),
             );
@@ -83,68 +111,107 @@ class _ValidationsScreenState extends State<ValidationsScreen> {
           final transactions = snapshot.data!;
 
           return ListView.builder(
-            padding: const EdgeInsets.all(8.0),
+            padding: const EdgeInsets.all(12.0),
             itemCount: transactions.length,
             itemBuilder: (context, index) {
               final trans = transactions[index];
               bool estEntree = trans.type == 'ENTREE';
 
               return Card(
-                margin: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
+                margin: const EdgeInsets.only(bottom: 16),
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(15),
-                  side: const BorderSide(color: Colors.orangeAccent, width: 1), // Bordure orange pour "En attente"
+                  side: const BorderSide(color: Colors.orangeAccent, width: 0.5),
                 ),
                 child: Padding(
-                  padding: const EdgeInsets.all(12.0),
+                  padding: const EdgeInsets.all(16.0),
                   child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
                           Row(
                             children: [
-                              Icon(estEntree ? Icons.arrow_downward : Icons.arrow_upward,
-                                  color: estEntree ? Colors.blueAccent : Colors.greenAccent),
-                              const SizedBox(width: 8),
-                              Text(
-                                trans.marque,
-                                style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                              CircleAvatar(
+                                // Correction withOpacity -> withValues
+                                backgroundColor: estEntree
+                                    ? Colors.blue.withValues(alpha: 0.2)
+                                    : Colors.green.withValues(alpha: 0.2),
+                                child: Icon(
+                                  estEntree ? Icons.download : Icons.upload,
+                                  color: estEntree ? Colors.blue : Colors.green,
+                                ),
+                              ),
+                              const SizedBox(width: 12),
+                              Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(trans.marque, style: Theme.of(context).textTheme.bodyLarge),
+                                  Text(trans.date, style: const TextStyle(color: Colors.white38, fontSize: 12)),
+                                ],
                               ),
                             ],
                           ),
                           Text(
-                            '${trans.montant.toInt()} FCFA',
+                            '${trans.montant.toInt()} F',
                             style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.orangeAccent),
                           ),
                         ],
                       ),
-                      const SizedBox(height: 8),
+                      const SizedBox(height: 15),
                       Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
-                          Text('Quantité : ${trans.quantite} paquets', style: const TextStyle(color: Colors.grey)),
-                          Text(trans.estPaye ? 'Paiement: Réglé' : 'Paiement: À crédit',
-                              style: TextStyle(color: trans.estPaye ? Colors.green : Colors.redAccent, fontSize: 12)),
+                          Text('📦 Quantité : ${trans.quantite} paquets', style: const TextStyle(color: Colors.white70)),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                            decoration: BoxDecoration(
+                              // Correction withOpacity -> withValues
+                              color: trans.estPaye ? Colors.green.withValues(alpha: 0.1) : Colors.red.withValues(alpha: 0.1),
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: Text(
+                              trans.estPaye ? 'PAYÉ' : 'À CRÉDIT',
+                              style: TextStyle(
+                                color: trans.estPaye ? Colors.green : Colors.redAccent,
+                                fontSize: 11,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ),
                         ],
                       ),
-                      const Divider(height: 20),
+                      // Affichage du nom du client s'il a été saisi
+                      if (trans.nomClient != null && trans.nomClient != "Client Anonyme")
+                        Padding(
+                          padding: const EdgeInsets.only(top: 8.0),
+                          child: Text('👤 Client : ${trans.nomClient}', style: const TextStyle(color: Colors.white54, fontSize: 13)),
+                        ),
+                      const Divider(height: 30, color: Colors.white10),
                       Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                         children: [
-                          // Bouton Rejeter
-                          TextButton.icon(
-                            style: TextButton.styleFrom(foregroundColor: Colors.redAccent),
-                            onPressed: () => _rejeter(trans),
-                            icon: const Icon(Icons.close),
-                            label: const Text('REJETER'),
+                          Expanded(
+                            child: TextButton.icon(
+                              style: TextButton.styleFrom(foregroundColor: Colors.redAccent),
+                              onPressed: () => _rejeter(trans),
+                              icon: const Icon(Icons.close),
+                              label: const Text('REJETER'),
+                            ),
                           ),
-                          // Bouton Approuver
-                          ElevatedButton.icon(
-                            style: ElevatedButton.styleFrom(backgroundColor: Colors.green, foregroundColor: Colors.white),
-                            onPressed: () => _approuver(trans),
-                            icon: const Icon(Icons.check),
-                            label: const Text('VALIDER'),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: ElevatedButton.icon(
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: const Color(0xFF00E676),
+                                foregroundColor: Colors.black,
+                                // Correction de l'erreur fontWeight
+                                textStyle: const TextStyle(fontWeight: FontWeight.bold),
+                              ),
+                              onPressed: () => _approuver(trans),
+                              icon: const Icon(Icons.check),
+                              label: const Text('VALIDER'),
+                            ),
                           ),
                         ],
                       ),
