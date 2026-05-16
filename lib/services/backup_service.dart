@@ -3,6 +3,7 @@ import 'package:file_picker/file_picker.dart';
 import 'package:sqflite/sqflite.dart';
 import 'package:path/path.dart';
 import '../database/db_helper.dart'; // NOUVEAU
+import 'package:flutter/foundation.dart';
 
 class BackupService {
   // Nom de la base de données (doit être identique à celui de DBHelper)
@@ -19,7 +20,7 @@ class BackupService {
       final fichierOriginal = File(pathOriginal);
 
       if (!await fichierOriginal.exists()) {
-        print("Erreur : La base de données source est introuvable.");
+        debugPrint("Erreur : La base de données source est introuvable.");
         return false;
       }
 
@@ -39,7 +40,7 @@ class BackupService {
       }
       return false; // L'utilisateur a annulé le choix du dossier
     } catch (e) {
-      print("Erreur lors de la création de la sauvegarde : $e");
+      debugPrint("Erreur lors de la création de la sauvegarde : $e");
       return false;
     }
   }
@@ -63,7 +64,7 @@ class BackupService {
 
         // Vérification de l'extension par sécurité
         if (!cheminSauvegarde.endsWith('.db')) {
-          print("Erreur : Le fichier sélectionné n'est pas une base de données .db");
+          debugPrint("Erreur : Le fichier sélectionné n'est pas une base de données .db");
           return false;
         }
 
@@ -84,7 +85,7 @@ class BackupService {
       }
       return false; // L'utilisateur a annulé
     } catch (e) {
-      print("Erreur lors de la restauration des données : $e");
+      debugPrint("Erreur lors de la restauration des données : $e");
       return false;
     }
   }

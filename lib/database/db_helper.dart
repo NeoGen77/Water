@@ -2,6 +2,10 @@ import 'package:sqflite/sqflite.dart';
 import 'package:path/path.dart';
 import '../models/water_item.dart';
 import '../models/transaction_item.dart';
+import 'package:flutter/foundation.dart'; // <-- AJOUTE CETTE LIGNE
+import 'package:sqflite/sqflite.dart';
+import 'package:path/path.dart';
+import 'package:flutter/foundation.dart';
 
 class DBHelper {
   static Database? _database;
@@ -361,7 +365,7 @@ class DBHelper {
     if (_database != null) {
       await _database!.close(); // Ferme la connexion active
       _database = null;         // Réinitialise la mémoire
-      print("Base de données fermée avec succès.");
+      debugPrint("Base de données fermée avec succès.");
     }
   }
   // ==========================================
@@ -418,8 +422,30 @@ class DBHelper {
       });
       return true; // Succès
     } catch (e) {
-      print("Erreur lors de l'annulation de la transaction : $e");
+      debugPrint("Erreur lors de l'annulation de la transaction : $e");
       return false; // Échec
+    }
+  }
+
+  // ==========================================
+  // DANGER ZONE : RÉINITIALISATION COMPLÈTE
+  // ==========================================
+  Future<void> reinitialiserBaseDeDonnees() async {
+    final db = await database;
+    try {
+      await db.transaction((txn) async {
+        // 1. Vider l'historique des transactions
+        await txn.delete('transactions');
+
+        // (Si tu as une table dettes, décommente la ligne suivante)
+        // await txn.delete('dettes');
+
+        // 2. Remettre le stock de toutes les marques d'eau à ZÉRO
+        await txn.update('water_items', {'quantite': 0});
+      });
+      debugPrint("✅ Base de données réinitialisée avec succès.");
+    } catch (e) {
+        debugPrint("❌ Erreur lors de la réinitialisation : $e");
     }
   }
 }

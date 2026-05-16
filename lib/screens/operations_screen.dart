@@ -236,7 +236,7 @@ class _FormulaireOperationState extends State<FormulaireOperation> {
             SwitchListTile(
               title: const Text('Paiement effectué'),
               value: _estPaye,
-              activeColor: const Color(0xFF00E676),
+              activeThumbColor: const Color(0xFF00E676),
               onChanged: (val) => setState(() => _estPaye = val),
             ),
 
