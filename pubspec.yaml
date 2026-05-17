@@ -33,6 +33,7 @@ flutter:
 
   assets:
     - assets/Letter.png
+    - assets/Tampon.png
 
 flutter_launcher_icons:
   android: true

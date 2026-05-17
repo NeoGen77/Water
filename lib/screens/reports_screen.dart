@@ -59,17 +59,18 @@ class _ReportsScreenState extends State<ReportsScreen> {
               final jourDonnees = jours[index];
 
               String date = jourDonnees['jour'];
-              double recettes = (jourDonnees['recettes'] as num?)?.toDouble() ?? 0.0;
+              // La requête SQL renvoie "recettes", mais on l'affiche comme "Ventes"
+              double ventes = (jourDonnees['recettes'] as num?)?.toDouble() ?? 0.0;
               double depenses = (jourDonnees['depenses'] as num?)?.toDouble() ?? 0.0;
               double credits = (jourDonnees['credits'] as num?)?.toDouble() ?? 0.0;
 
-              // NOUVEAU : Récupération du vrai bénéfice
+              // Récupération du vrai bénéfice
               double beneficeNet = (jourDonnees['benefice_net'] as num?)?.toDouble() ?? 0.0;
 
               int operations = jourDonnees['nombre_operations'] as int;
 
               // Cash en caisse (Flux de trésorerie)
-              double soldeCaisse = recettes - depenses;
+              double soldeCaisse = ventes - depenses;
 
               return Card(
                 color: const Color(0xFF1D1E33),
@@ -125,9 +126,9 @@ class _ReportsScreenState extends State<ReportsScreen> {
                           Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              _buildLigneChiffre('Recettes', recettes, Colors.greenAccent, Icons.arrow_downward),
+                              _buildLigneChiffre('Ventes', ventes, const Color(0xFF4C4DDC), Icons.shopping_bag_outlined),
                               const SizedBox(height: 8),
-                              _buildLigneChiffre('Dépenses', depenses, Colors.redAccent, Icons.arrow_upward),
+                              _buildLigneChiffre('Dépenses', depenses, Colors.redAccent, Icons.shopping_cart),
                               const SizedBox(height: 8),
                               _buildLigneChiffre('Crédits', credits, Colors.orangeAccent, Icons.hourglass_empty),
                             ],
@@ -161,7 +162,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
 
                       const SizedBox(height: 20),
 
-                      // --- NOUVEAU : LE VRAI BÉNÉFICE NET ---
+                      // --- LE VRAI BÉNÉFICE NET ---
                       Container(
                         width: double.infinity,
                         padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 15),
