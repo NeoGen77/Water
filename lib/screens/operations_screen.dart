@@ -130,12 +130,16 @@ class _FormulaireOperationState extends State<FormulaireOperation> {
         return; // Stoppe l'opération ici, rien n'est sauvegardé
       }
 
-      double montantCalcule = 0;
+      double montantCalcule = 0.0;
+      double beneficeCalcule = 0.0; // NOUVEAU : Variable pour stocker le bénéfice
 
       if (widget.estRavitaillement) {
-        montantCalcule = double.tryParse(_montantTotalController.text) ?? 0;
+        montantCalcule = double.tryParse(_montantTotalController.text) ?? 0.0;
+        beneficeCalcule = 0.0; // Pas de bénéfice immédiat sur un achat de stock
       } else {
         montantCalcule = quantiteSaisie * _produitSelectionne!.prixVente;
+        // CALCUL DU BÉNÉFICE : (Prix de vente - Prix d'achat) * Quantité vendue
+        beneficeCalcule = (_produitSelectionne!.prixVente - _produitSelectionne!.prixAchat) * quantiteSaisie;
       }
 
       String statutOperation = widget.isAdmin ? 'VALIDEE' : 'EN_ATTENTE';
@@ -146,11 +150,16 @@ class _FormulaireOperationState extends State<FormulaireOperation> {
         type: widget.estRavitaillement ? 'ENTREE' : 'SORTIE',
         quantite: quantiteSaisie,
         montant: montantCalcule,
+        benefice: beneficeCalcule, // NOUVEAU : Enregistrement du bénéfice calculé
         date: DateTime.now().toString().substring(0, 16),
         estPaye: _estPaye,
         statut: statutOperation,
         nomClient: _nomClientController.text.isEmpty ? "Client Anonyme" : _nomClientController.text,
       );
+
+      // Capture des outils pour éviter l'avertissement bleu (Async Gap)
+      final messenger = ScaffoldMessenger.of(context);
+      final navigator = Navigator.of(context);
 
       if (widget.isAdmin) {
         await DBHelper().updateStock(_produitSelectionne!.id!, widget.estRavitaillement ? quantiteSaisie : -quantiteSaisie);
@@ -158,10 +167,9 @@ class _FormulaireOperationState extends State<FormulaireOperation> {
 
       await DBHelper().insertTransaction(nouvelleTransaction);
 
-      if (!mounted) return;
-      Navigator.pop(context);
-
-      ScaffoldMessenger.of(context).showSnackBar(
+      // Utilisation des outils capturés
+      navigator.pop();
+      messenger.showSnackBar(
         SnackBar(
           content: Text(widget.isAdmin ? '✅ Opération enregistrée !' : '⏳ Envoyé pour vérification'),
           backgroundColor: widget.isAdmin ? Colors.green : Colors.orange,

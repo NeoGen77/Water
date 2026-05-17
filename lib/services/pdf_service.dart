@@ -2,6 +2,8 @@ import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
 import '../models/transaction_item.dart';
+import 'package:flutter/services.dart'; // Indispensable pour lire le dossier assets
+import 'dart:typed_data'; // Pour manipuler les bytes de l'image
 
 class PdfService {
 

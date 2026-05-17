@@ -27,15 +27,16 @@ class _ValidationsScreenState extends State<ValidationsScreen> {
 
   // Fonction pour APPROUVER une saisie
   void _approuver(TransactionItem trans) async {
+    // 1. Capture du messenger AVANT les await pour éviter les Async Gaps
+    final messenger = ScaffoldMessenger.of(context);
+
     // --- SÉCURITÉ OPTION A : VÉRIFICATION DU STOCK AVANT VALIDATION ---
     if (trans.type == 'SORTIE') {
-      // On récupère l'état actuel du produit en base
       List<WaterItem> produits = await DBHelper().getAllItems();
       WaterItem produitConcerne = produits.firstWhere((p) => p.id == trans.waterItemId);
 
-      // Si le stock a baissé entre-temps et ne suffit plus
       if (trans.quantite > produitConcerne.quantite) {
-        if (!mounted) return; // Sécurité Async
+        if (!mounted) return;
         showDialog(
           context: context,
           builder: (ctx) => AlertDialog(
@@ -54,31 +55,31 @@ class _ValidationsScreenState extends State<ValidationsScreen> {
       }
     }
 
-    // 1. On change le statut en 'VALIDEE'
+    // 2. Validation en base de données
     await DBHelper().validerTransaction(trans.id!);
 
-    // 2. On met à jour le stock
+    // 3. Mise à jour du stock
     int variation = trans.type == 'ENTREE' ? trans.quantite : -trans.quantite;
     await DBHelper().updateStock(trans.waterItemId, variation);
 
-    // 3. On rafraîchit l'écran et on notifie
+    // 4. Rafraîchissement et Notification via le messenger capturé
     _chargerEnAttente();
-
-    if (!mounted) return; // Correction Async Gap
-    ScaffoldMessenger.of(context).showSnackBar(
+    messenger.showSnackBar(
       const SnackBar(content: Text('✅ Opération validée ! Stock mis à jour.'), backgroundColor: Colors.green),
     );
   }
 
   // Fonction pour REJETER une saisie
   void _rejeter(TransactionItem trans) async {
-    // On supprime purement et simplement le brouillon
+    // 1. Capture du messenger
+    final messenger = ScaffoldMessenger.of(context);
+
+    // 2. Suppression en base
     await DBHelper().supprimerTransaction(trans.id!);
 
+    // 3. Rafraîchissement et Notification
     _chargerEnAttente();
-
-    if (!mounted) return; // Correction Async Gap
-    ScaffoldMessenger.of(context).showSnackBar(
+    messenger.showSnackBar(
       const SnackBar(content: Text('❌ Opération rejetée et supprimée.'), backgroundColor: Colors.redAccent),
     );
   }
@@ -134,7 +135,6 @@ class _ValidationsScreenState extends State<ValidationsScreen> {
                           Row(
                             children: [
                               CircleAvatar(
-                                // Correction withOpacity -> withValues
                                 backgroundColor: estEntree
                                     ? Colors.blue.withValues(alpha: 0.2)
                                     : Colors.green.withValues(alpha: 0.2),
@@ -153,9 +153,20 @@ class _ValidationsScreenState extends State<ValidationsScreen> {
                               ),
                             ],
                           ),
-                          Text(
-                            '${trans.montant.toInt()} F',
-                            style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.orangeAccent),
+                          Column(
+                            crossAxisAlignment: CrossAxisAlignment.end,
+                            children: [
+                              Text(
+                                '${trans.montant.toInt()} F',
+                                style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.orangeAccent),
+                              ),
+                              // NOUVEAU : Affichage du bénéfice uniquement pour les sorties (ventes)
+                              if (!estEntree)
+                                Text(
+                                  '+ ${trans.benefice.toInt()} F net',
+                                  style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Color(0xFF00E676)),
+                                ),
+                            ],
                           ),
                         ],
                       ),
@@ -167,7 +178,6 @@ class _ValidationsScreenState extends State<ValidationsScreen> {
                           Container(
                             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
                             decoration: BoxDecoration(
-                              // Correction withOpacity -> withValues
                               color: trans.estPaye ? Colors.green.withValues(alpha: 0.1) : Colors.red.withValues(alpha: 0.1),
                               borderRadius: BorderRadius.circular(8),
                             ),
@@ -182,7 +192,6 @@ class _ValidationsScreenState extends State<ValidationsScreen> {
                           ),
                         ],
                       ),
-                      // Affichage du nom du client s'il a été saisi
                       if (trans.nomClient != null && trans.nomClient != "Client Anonyme")
                         Padding(
                           padding: const EdgeInsets.only(top: 8.0),
@@ -205,7 +214,6 @@ class _ValidationsScreenState extends State<ValidationsScreen> {
                               style: ElevatedButton.styleFrom(
                                 backgroundColor: const Color(0xFF00E676),
                                 foregroundColor: Colors.black,
-                                // Correction de l'erreur fontWeight
                                 textStyle: const TextStyle(fontWeight: FontWeight.bold),
                               ),
                               onPressed: () => _approuver(trans),
