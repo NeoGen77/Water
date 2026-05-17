@@ -540,12 +540,11 @@ class _InvoicesScreenState extends State<InvoicesScreen> {
                     borderRadius: BorderRadius.circular(15),
                     side: BorderSide(color: Colors.white.withValues(alpha: 0.05), width: 1),
                   ),
-                  // CORRECTION DU BOTTOM OVERFLOWED ICI : Utilisation d'un InkWell et Row
                   child: InkWell(
                     borderRadius: BorderRadius.circular(15),
                     onLongPress: () => _afficherBoiteAnnulation(context, trans),
                     child: Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14), // Un peu plus d'espace vertical
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
                       child: Row(
                         crossAxisAlignment: CrossAxisAlignment.center,
                         children: [
@@ -645,7 +644,7 @@ class _InvoicesScreenState extends State<InvoicesScreen> {
                                 ],
                               ),
 
-                              // Bouton PDF
+                              // --- NOUVEAU : BOUTON PDF FACTURE GROUPÉE ---
                               if (!estEntree) ...[
                                 const SizedBox(width: 5),
                                 IconButton(
@@ -656,7 +655,17 @@ class _InvoicesScreenState extends State<InvoicesScreen> {
                                     messenger.showSnackBar(
                                       const SnackBar(content: Text('Génération de la facture...'), duration: Duration(seconds: 1)),
                                     );
-                                    await PdfService.exporterFacture(trans);
+
+                                    // REGROUPEMENT MAGIQUE : On récupère toutes les transactions
+                                    // de la liste actuelle qui ont exactement la même date/heure et le même client.
+                                    List<TransactionItem> factureGroupee = _transactions.where((t) =>
+                                    t.date == trans.date &&
+                                        t.nomClient == trans.nomClient &&
+                                        t.type == trans.type
+                                    ).toList();
+
+                                    // On envoie toute la liste au générateur PDF !
+                                    await PdfService.exporterFacture(factureGroupee);
                                   },
                                 ),
                               ],
@@ -677,7 +686,7 @@ class _InvoicesScreenState extends State<InvoicesScreen> {
 
   Widget _buildTotalCard({required String titre, required String valeur, required Color couleur, required IconData icone}) {
     return Container(
-      padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8), // Padding légèrement réduit pour que les 3 rentrent bien
+      padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
       decoration: BoxDecoration(
         color: couleur.withValues(alpha: 0.1),
         borderRadius: BorderRadius.circular(15),
@@ -685,11 +694,11 @@ class _InvoicesScreenState extends State<InvoicesScreen> {
       ),
       child: Column(
         children: [
-          Icon(icone, color: couleur, size: 24), // Taille de l'icône ajustée
+          Icon(icone, color: couleur, size: 24),
           const SizedBox(height: 6),
           Text(
             valeur,
-            style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: couleur), // Police un peu plus fine pour tenir sur une ligne
+            style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: couleur),
           ),
           const SizedBox(height: 4),
           Text(

@@ -9,10 +9,15 @@ import '../models/transaction_item.dart';
 class PdfService {
 
   // ==========================================
-  // 1. FACTURE UNIQUE (Déjà existante)
+  // 1. FACTURE DE VENTE (Compatible avec le Panier)
   // ==========================================
-  static Future<void> exporterFacture(TransactionItem trans) async {
+  static Future<void> exporterFacture(List<TransactionItem> panier) async {
+    if (panier.isEmpty) return;
+
     final pdf = pw.Document();
+
+    // On utilise le premier article du panier pour récupérer la date, le client et le statut
+    final TransactionItem reference = panier.first;
 
     pw.MemoryImage? imageTampon;
     try {
@@ -23,7 +28,21 @@ class PdfService {
       debugPrint("Erreur lors du chargement du tampon : $e");
     }
 
-    int prixUnitaire = trans.quantite > 0 ? (trans.montant ~/ trans.quantite) : 0;
+    // --- CALCUL DES TOTAUX ET LIGNES DU TABLEAU ---
+    double totalFacture = 0;
+    List<List<String>> lignesTableau = [];
+
+    for (var article in panier) {
+      totalFacture += article.montant;
+      int prixUnitaire = article.quantite > 0 ? (article.montant ~/ article.quantite) : 0;
+
+      lignesTableau.add([
+        'Eau minérale ${article.marque} (Paquets)',
+        '${article.quantite}',
+        '$prixUnitaire F',
+        '${article.montant.toInt()} FCFA'
+      ]);
+    }
 
     pdf.addPage(
       pw.Page(
@@ -33,11 +52,12 @@ class PdfService {
           return pw.Column(
             crossAxisAlignment: pw.CrossAxisAlignment.start,
             children: [
-              _buildEnTete('FACTURE', 'FAC-${trans.date.replaceAll('-', '')}-${trans.id ?? "000"}', trans.date),
+              _buildEnTete('FACTURE', 'FAC-${reference.date.replaceAll(RegExp(r'[-: ]'), '')}-${reference.id ?? "000"}', reference.date),
               pw.SizedBox(height: 40),
-              _buildInfosClient(trans.nomClient ?? "Client au comptoir", trans.estPaye ? "RÉGLÉ" : "À CRÉDIT"),
+              _buildInfosClient(reference.nomClient ?? "Client au comptoir", reference.estPaye ? "RÉGLÉ" : "À CRÉDIT"),
               pw.SizedBox(height: 30),
 
+              // Tableau dynamique qui s'adapte au nombre de produits dans le panier
               pw.TableHelper.fromTextArray(
                 context: context,
                 border: pw.TableBorder.all(color: PdfColors.grey300),
@@ -47,25 +67,24 @@ class PdfService {
                 cellAlignment: pw.Alignment.center,
                 cellAlignments: {0: pw.Alignment.centerLeft, 3: pw.Alignment.centerRight},
                 headers: ['Désignation', 'Quantité', 'Prix Unitaire', 'Montant Total'],
-                data: [
-                  ['Eau minérale ${trans.marque} (Paquets)', '${trans.quantite}', '$prixUnitaire F', '${trans.montant.toInt()} FCFA'],
-                ],
+                data: lignesTableau,
               ),
               pw.SizedBox(height: 40),
-              _buildPiedDePage(imageTampon, trans.montant.toInt()),
+
+              _buildPiedDePage(imageTampon, totalFacture.toInt()),
             ],
           );
         },
       ),
     );
 
-    String clientNettoye = (trans.nomClient ?? "Client").replaceAll(RegExp(r'[\\/:*?"<>|]'), '_');
-    String dateNettoyee = trans.date.replaceAll(RegExp(r'[\\/:*?"<>|]'), '-');
+    String clientNettoye = (reference.nomClient ?? "Client").replaceAll(RegExp(r'[\\/:*?"<>|]'), '_');
+    String dateNettoyee = reference.date.replaceAll(RegExp(r'[\\/:*?"<>|]'), '-');
     await Printing.sharePdf(bytes: await pdf.save(), filename: 'Facture_${clientNettoye}_$dateNettoyee.pdf');
   }
 
   // ==========================================
-  // 2. NOUVEAU : RELEVÉ DE COMPTE MULTIPLE
+  // 2. RELEVÉ DE COMPTE MULTIPLE
   // ==========================================
   static Future<void> exporterReleveClient(String nomClient, List<TransactionItem> transactions) async {
     final pdf = pw.Document();
@@ -104,7 +123,7 @@ class PdfService {
     String dateAujourdhui = DateTime.now().toString().substring(0, 10);
 
     pdf.addPage(
-      pw.MultiPage( // MultiPage permet de créer plusieurs pages automatiquement si le tableau est très long !
+      pw.MultiPage( // MultiPage permet de créer plusieurs pages automatiquement
         pageFormat: PdfPageFormat.a4,
         margin: const pw.EdgeInsets.all(40),
         build: (pw.Context context) {
@@ -164,7 +183,7 @@ class PdfService {
             ),
             pw.SizedBox(height: 40),
 
-            _buildPiedDePage(imageTampon, null), // On passe null car le total est déjà géré au-dessus
+            _buildPiedDePage(imageTampon, null), // On passe null car le total est déjà géré
           ];
         },
       ),
@@ -175,7 +194,7 @@ class PdfService {
   }
 
   // ==========================================
-  // COMPOSANTS RÉUTILISABLES (Pour éviter de dupliquer le code)
+  // COMPOSANTS RÉUTILISABLES
   // ==========================================
 
   static pw.Widget _buildEnTete(String titreDoc, String numero, String date) {
@@ -185,10 +204,10 @@ class PdfService {
         pw.Column(
           crossAxisAlignment: pw.CrossAxisAlignment.start,
           children: [
-            pw.Text('DÉPÔT D\'EAU PRO', style: pw.TextStyle(fontSize: 22, fontWeight: pw.FontWeight.bold, color: PdfColors.indigo900)),
+            pw.Text('DÉPÔT D\'EAU AQUA VIIM', style: pw.TextStyle(fontSize: 22, fontWeight: pw.FontWeight.bold, color: PdfColors.indigo900)),
             pw.SizedBox(height: 5),
             pw.Text('Ouagadougou, Burkina Faso', style: const pw.TextStyle(fontSize: 12)),
-            pw.Text('Téléphone : +226 74 09 66 25', style: const pw.TextStyle(fontSize: 12)),
+            pw.Text('Téléphone : +226 74 09 66 25 / 73 64 62 36', style: const pw.TextStyle(fontSize: 12)),
           ],
         ),
         pw.Container(
