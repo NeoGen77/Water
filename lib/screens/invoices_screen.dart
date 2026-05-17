@@ -6,7 +6,7 @@ import '../services/backup_service.dart';
 import 'validations_screen.dart';
 import 'reports_screen.dart';
 import 'debts_screen.dart';
-import '../services/pdf_service.dart'; // Import du service PDF
+import '../services/pdf_service.dart';
 
 class InvoicesScreen extends StatefulWidget {
   const InvoicesScreen({super.key});
@@ -31,8 +31,9 @@ class _InvoicesScreenState extends State<InvoicesScreen> {
   List<Map<String, dynamic>> _detailsStock = [];
   bool _afficherDetailsStock = false;
 
-  double _totalRecettes = 0;
+  double _totalVentes = 0;
   double _totalDepenses = 0;
+  double _totalBenefice = 0; // NOUVEAU
 
   // Code secret de sécurité
   final String _codeSecret = "98521";
@@ -91,8 +92,9 @@ class _InvoicesScreenState extends State<InvoicesScreen> {
     DBHelper().getBilanFinancier(filter: _filtreActuel).then((bilan) {
       if (mounted) {
         setState(() {
-          _totalRecettes = bilan['recettes']!;
+          _totalVentes = bilan['ventes']!;
           _totalDepenses = bilan['depenses']!;
+          _totalBenefice = bilan['benefices'] ?? 0; // Sécurité si null
         });
       }
     });
@@ -132,11 +134,16 @@ class _InvoicesScreenState extends State<InvoicesScreen> {
         context: context,
         builder: (ctx) {
           return AlertDialog(
+            backgroundColor: const Color(0xFF1D1E33),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(15),
+              side: const BorderSide(color: Colors.redAccent, width: 1),
+            ),
             title: const Row(
               children: [
-                Icon(Icons.warning_amber_rounded, color: Colors.red),
+                Icon(Icons.warning_amber_rounded, color: Colors.redAccent),
                 SizedBox(width: 8),
-                Text("Annuler la saisie", style: TextStyle(color: Colors.red, fontSize: 18)),
+                Text("Annuler la saisie", style: TextStyle(color: Colors.redAccent, fontSize: 18)),
               ],
             ),
             content: Column(
@@ -145,19 +152,25 @@ class _InvoicesScreenState extends State<InvoicesScreen> {
               children: [
                 Text(
                   "Vous êtes sur le point de supprimer cette ${trans.type == 'SORTIE' ? 'vente' : 'entrée'} de ${trans.quantite} ${trans.marque}.",
-                  style: const TextStyle(fontWeight: FontWeight.bold),
+                  style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.white),
                 ),
                 const SizedBox(height: 8),
-                const Text("Le montant sera retiré de la caisse et le stock d'eau sera corrigé automatiquement.", style: TextStyle(fontSize: 13, color: Colors.grey)),
+                const Text(
+                    "Le montant sera retiré de la caisse et le stock d'eau sera corrigé automatiquement.",
+                    style: TextStyle(fontSize: 13, color: Colors.white54)
+                ),
                 const SizedBox(height: 15),
                 TextField(
                   controller: codeController,
                   keyboardType: TextInputType.number,
-                  obscureText: true, // Cache le code (astérisques)
+                  obscureText: true,
+                  style: const TextStyle(color: Colors.white),
                   decoration: InputDecoration(
                     labelText: 'Code administrateur',
-                    prefixIcon: const Icon(Icons.lock_outline),
-                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                    labelStyle: const TextStyle(color: Colors.white54),
+                    prefixIcon: const Icon(Icons.lock_outline, color: Colors.white54),
+                    enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: const BorderSide(color: Colors.white24)),
+                    focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: const BorderSide(color: Colors.redAccent)),
                   ),
                 ),
               ],
@@ -165,30 +178,31 @@ class _InvoicesScreenState extends State<InvoicesScreen> {
             actions: [
               TextButton(
                   onPressed: () => Navigator.pop(ctx),
-                  child: const Text("Fermer", style: TextStyle(color: Colors.grey))
+                  child: const Text("Fermer", style: TextStyle(color: Colors.white54))
               ),
               ElevatedButton(
-                style: ElevatedButton.styleFrom(backgroundColor: Colors.red, foregroundColor: Colors.white),
+                style: ElevatedButton.styleFrom(backgroundColor: Colors.redAccent, foregroundColor: Colors.white),
                 onPressed: () async {
-                  if (codeController.text == _codeSecret) {
-                    Navigator.pop(ctx);
+                  final messenger = ScaffoldMessenger.of(context);
+                  final navigator = Navigator.of(ctx);
 
+                  if (codeController.text == _codeSecret) {
+                    navigator.pop(); // On ferme d'abord la boite
                     bool succes = await DBHelper().annulerTransaction(trans.id!);
 
-                    if (!mounted) return;
                     if (succes) {
-                      ScaffoldMessenger.of(context).showSnackBar(
+                      messenger.showSnackBar(
                         const SnackBar(content: Text('✅ Transaction annulée et stock restauré !'), backgroundColor: Colors.green),
                       );
                       _initialiserEcran();
                     } else {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text('❌ Erreur lors de l\'annulation.'), backgroundColor: Colors.red),
+                      messenger.showSnackBar(
+                        const SnackBar(content: Text('❌ Erreur lors de l\'annulation.'), backgroundColor: Colors.redAccent),
                       );
                     }
                   } else {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('❌ Code incorrect. Action refusée.'), backgroundColor: Colors.red),
+                    messenger.showSnackBar(
+                      const SnackBar(content: Text('❌ Code incorrect. Action refusée.'), backgroundColor: Colors.redAccent),
                     );
                   }
                 },
@@ -203,34 +217,39 @@ class _InvoicesScreenState extends State<InvoicesScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: const Color(0xFF0A0E21),
       appBar: AppBar(
-        title: const Text('Historique & Caisse'),
+        title: const Text('Historique & Caisse', style: TextStyle(fontWeight: FontWeight.bold)),
+        backgroundColor: const Color(0xFF0A0E21),
+        elevation: 0,
         actions: [
           // BOUTON : Sauvegarde & Restauration Locale
           PopupMenuButton<String>(
-            icon: const Icon(Icons.security, color: Colors.greenAccent),
+            icon: const Icon(Icons.security, color: Color(0xFF00E676)),
             tooltip: 'Sécurité et Sauvegardes',
+            color: const Color(0xFF1D1E33),
             onSelected: (String choix) async {
               final messenger = ScaffoldMessenger.of(context);
 
               if (choix == 'sauvegarder') {
                 bool succes = await BackupService.creerCopieLocale();
-                if (!mounted) return;
                 if (succes) {
                   messenger.showSnackBar(
                     const SnackBar(content: Text('✅ Sauvegarde créée dans vos dossiers !'), backgroundColor: Colors.green),
                   );
                 }
               } else if (choix == 'restaurer') {
+                final navigator = Navigator.of(context);
                 bool? confirmer = await showDialog<bool>(
                   context: context,
                   builder: (ctx) => AlertDialog(
-                    title: const Text("Attention", style: TextStyle(color: Colors.red)),
-                    content: const Text("Cela remplacera toutes vos données actuelles par le fichier de sauvegarde. Voulez-vous continuer ?"),
+                    backgroundColor: const Color(0xFF1D1E33),
+                    title: const Text("Attention", style: TextStyle(color: Colors.redAccent)),
+                    content: const Text("Cela remplacera toutes vos données actuelles par le fichier de sauvegarde. Voulez-vous continuer ?", style: TextStyle(color: Colors.white)),
                     actions: [
-                      TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text("Annuler")),
+                      TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text("Annuler", style: TextStyle(color: Colors.white54))),
                       ElevatedButton(
-                        style: ElevatedButton.styleFrom(backgroundColor: Colors.red, foregroundColor: Colors.white),
+                        style: ElevatedButton.styleFrom(backgroundColor: Colors.redAccent, foregroundColor: Colors.white),
                         onPressed: () => Navigator.pop(ctx, true),
                         child: const Text("Restaurer"),
                       ),
@@ -240,10 +259,9 @@ class _InvoicesScreenState extends State<InvoicesScreen> {
 
                 if (confirmer == true) {
                   bool succes = await BackupService.restaurerCopieLocale();
-                  if (!mounted) return;
                   if (succes) {
                     messenger.showSnackBar(
-                      const SnackBar(content: Text('🔄 Données restaurées ! Veuillez relancer l\'application.'), backgroundColor: Colors.blue),
+                      const SnackBar(content: Text('🔄 Données restaurées ! Veuillez relancer l\'application.'), backgroundColor: Colors.blueAccent),
                     );
                   }
                 }
@@ -255,9 +273,9 @@ class _InvoicesScreenState extends State<InvoicesScreen> {
                   value: 'sauvegarder',
                   child: Row(
                     children: [
-                      Icon(Icons.download, color: Colors.green),
+                      Icon(Icons.download, color: Color(0xFF00E676)),
                       SizedBox(width: 10),
-                      Text('Créer une sauvegarde'),
+                      Text('Créer une sauvegarde', style: TextStyle(color: Colors.white)),
                     ],
                   ),
                 ),
@@ -265,9 +283,9 @@ class _InvoicesScreenState extends State<InvoicesScreen> {
                   value: 'restaurer',
                   child: Row(
                     children: [
-                      Icon(Icons.restore, color: Colors.orange),
+                      Icon(Icons.restore, color: Colors.orangeAccent),
                       SizedBox(width: 10),
-                      Text('Restaurer une copie'),
+                      Text('Restaurer une copie', style: TextStyle(color: Colors.white)),
                     ],
                   ),
                 ),
@@ -277,7 +295,7 @@ class _InvoicesScreenState extends State<InvoicesScreen> {
 
           // BOUTON : Accès aux Rapports Journaliers
           IconButton(
-            icon: const Icon(Icons.bar_chart, color: Colors.indigo),
+            icon: const Icon(Icons.bar_chart, color: Color(0xFF4C4DDC)),
             tooltip: 'Rapports Journaliers',
             onPressed: () {
               Navigator.push(
@@ -289,7 +307,7 @@ class _InvoicesScreenState extends State<InvoicesScreen> {
 
           // BOUTON : Accès direct à l'écran des dettes
           IconButton(
-            icon: const Icon(Icons.menu_book, color: Colors.redAccent),
+            icon: const Icon(Icons.menu_book, color: Colors.orangeAccent),
             tooltip: 'Suivi des Crédits / Dettes',
             onPressed: () async {
               await Navigator.push(
@@ -301,8 +319,9 @@ class _InvoicesScreenState extends State<InvoicesScreen> {
           ),
 
           PopupMenuButton<String>(
-            icon: const Icon(Icons.filter_list, color: Colors.blueAccent),
+            icon: const Icon(Icons.filter_list, color: Colors.white54),
             tooltip: 'Filtrer par date',
+            color: const Color(0xFF1D1E33),
             onSelected: (String choix) {
               setState(() {
                 _filtreActuel = choix;
@@ -318,13 +337,13 @@ class _InvoicesScreenState extends State<InvoicesScreen> {
                       Icon(
                           Icons.calendar_today,
                           size: 18,
-                          color: _filtreActuel == choix ? Colors.blueAccent : Colors.grey
+                          color: _filtreActuel == choix ? const Color(0xFF4C4DDC) : Colors.white54
                       ),
                       const SizedBox(width: 10),
                       Text(
                           choix,
                           style: TextStyle(
-                              color: _filtreActuel == choix ? Colors.blueAccent : Theme.of(context).textTheme.bodyMedium?.color,
+                              color: _filtreActuel == choix ? const Color(0xFF4C4DDC) : Colors.white,
                               fontWeight: _filtreActuel == choix ? FontWeight.bold : FontWeight.normal
                           )
                       ),
@@ -336,7 +355,7 @@ class _InvoicesScreenState extends State<InvoicesScreen> {
           ),
 
           IconButton(
-            icon: const Icon(Icons.fact_check_outlined, color: Colors.orangeAccent),
+            icon: const Icon(Icons.fact_check_outlined, color: Colors.redAccent),
             tooltip: 'Saisies en attente',
             onPressed: () async {
               await Navigator.push(
@@ -352,26 +371,31 @@ class _InvoicesScreenState extends State<InvoicesScreen> {
         children: [
           if (_filtreActuel != 'Tout')
             Container(
-              padding: const EdgeInsets.symmetric(vertical: 4),
+              padding: const EdgeInsets.symmetric(vertical: 6),
               width: double.infinity,
-              color: Colors.blueAccent.withValues(alpha: 0.1),
+              color: const Color(0xFF4C4DDC).withValues(alpha: 0.1),
               child: Text(
                 'Affichage : $_filtreActuel',
                 textAlign: TextAlign.center,
-                style: const TextStyle(color: Colors.blueAccent, fontWeight: FontWeight.bold, fontSize: 12),
+                style: const TextStyle(color: Color(0xFF4C4DDC), fontWeight: FontWeight.bold, fontSize: 12, letterSpacing: 1),
               ),
             ),
 
           // --- TABLEAU DE BORD FIXE ---
           Container(
-            padding: const EdgeInsets.all(12),
-            margin: const EdgeInsets.all(8),
+            padding: const EdgeInsets.all(16),
+            margin: const EdgeInsets.all(12),
             decoration: BoxDecoration(
-              color: Theme.of(context).cardColor,
-              borderRadius: BorderRadius.circular(15),
+                color: const Color(0xFF1D1E33),
+                borderRadius: BorderRadius.circular(20),
+                border: Border.all(color: Colors.white.withValues(alpha: 0.05)),
+                boxShadow: [
+                  BoxShadow(color: Colors.black.withValues(alpha: 0.2), blurRadius: 10, offset: const Offset(0, 5)),
+                ]
             ),
             child: Column(
               children: [
+                // --- LES 3 CARTES (DÉPENSES, VENTES, BÉNÉFICE) ---
                 Row(
                   children: [
                     Expanded(
@@ -382,13 +406,22 @@ class _InvoicesScreenState extends State<InvoicesScreen> {
                         icone: Icons.arrow_downward,
                       ),
                     ),
-                    const SizedBox(width: 12),
+                    const SizedBox(width: 8),
                     Expanded(
                       child: _buildTotalCard(
-                        titre: 'Recettes',
-                        valeur: '${_totalRecettes.toInt()} F',
-                        couleur: Colors.green,
-                        icone: Icons.arrow_upward,
+                        titre: 'Ventes',
+                        valeur: '${_totalVentes.toInt()} F',
+                        couleur: const Color(0xFF4C4DDC),
+                        icone: Icons.shopping_bag_outlined,
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: _buildTotalCard(
+                        titre: 'Bénéfice',
+                        valeur: '${_totalBenefice.toInt()} F',
+                        couleur: const Color(0xFF00E676),
+                        icone: Icons.trending_up,
                       ),
                     ),
                   ],
@@ -396,28 +429,29 @@ class _InvoicesScreenState extends State<InvoicesScreen> {
                 const SizedBox(height: 15),
 
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                  padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 12),
                   decoration: BoxDecoration(
-                    color: Colors.grey.withValues(alpha: 0.1),
-                    borderRadius: BorderRadius.circular(8),
+                    color: const Color(0xFF0A0E21),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: Colors.white.withValues(alpha: 0.05)),
                   ),
                   child: Column(
                     children: [
                       Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
-                          const Text("Solde de Caisse :", style: TextStyle(fontWeight: FontWeight.w500)),
+                          const Text("Solde de Caisse :", style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white70)),
                           Text(
-                            "${(_totalRecettes - _totalDepenses).toInt()} FCFA",
+                            "${(_totalVentes - _totalDepenses).toInt()} FCFA",
                             style: TextStyle(
                               fontWeight: FontWeight.bold,
                               fontSize: 16,
-                              color: (_totalRecettes - _totalDepenses) >= 0 ? Colors.green : Colors.red,
+                              color: (_totalVentes - _totalDepenses) >= 0 ? const Color(0xFF00E676) : Colors.redAccent,
                             ),
                           ),
                         ],
                       ),
-                      const Divider(height: 10),
+                      const Divider(height: 15, color: Colors.white10),
 
                       InkWell(
                         onTap: () {
@@ -432,16 +466,16 @@ class _InvoicesScreenState extends State<InvoicesScreen> {
                             children: [
                               Row(
                                 children: [
-                                  const Text("Valeur du Stock :", style: TextStyle(fontWeight: FontWeight.w500)),
+                                  const Text("Valeur du Stock :", style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white70)),
                                   Icon(
                                       _afficherDetailsStock ? Icons.arrow_drop_up : Icons.arrow_drop_down,
-                                      color: Colors.blueAccent
+                                      color: const Color(0xFF4C4DDC)
                                   ),
                                 ],
                               ),
                               Text(
                                 "${_valeurTotaleStock.toInt()} FCFA",
-                                style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.blueAccent),
+                                style: const TextStyle(fontWeight: FontWeight.bold, color: Color(0xFF4C4DDC)),
                               ),
                             ],
                           ),
@@ -449,20 +483,20 @@ class _InvoicesScreenState extends State<InvoicesScreen> {
                       ),
 
                       if (_afficherDetailsStock) ...[
-                        const SizedBox(height: 8),
+                        const SizedBox(height: 10),
                         ..._detailsStock.map((detail) {
                           return Padding(
-                            padding: const EdgeInsets.only(left: 10, right: 5, bottom: 6),
+                            padding: const EdgeInsets.only(left: 10, right: 5, bottom: 8),
                             child: Row(
                               mainAxisAlignment: MainAxisAlignment.spaceBetween,
                               children: [
                                 Text(
                                     "• ${detail['marque']} ${detail['format']} (${detail['quantite']} pqt)",
-                                    style: const TextStyle(fontSize: 12, color: Colors.black87)
+                                    style: const TextStyle(fontSize: 12, color: Colors.white54)
                                 ),
                                 Text(
                                     "${detail['valeur'].toInt()} F",
-                                    style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w500, color: Colors.black54)
+                                    style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.white38)
                                 ),
                               ],
                             ),
@@ -475,15 +509,15 @@ class _InvoicesScreenState extends State<InvoicesScreen> {
               ],
             ),
           ),
-          const Divider(height: 1, color: Colors.grey),
+          const Divider(height: 1, color: Colors.white10),
 
           // --- LISTE DÉFILANTE (PAGINATION) ---
           Expanded(
             child: _transactions.isEmpty && !_isLoading
-                ? const Center(child: Text('Aucune transaction trouvée.', style: TextStyle(color: Colors.grey)))
+                ? const Center(child: Text('Aucune transaction trouvée.', style: TextStyle(color: Colors.white54)))
                 : ListView.builder(
               controller: _scrollController,
-              padding: const EdgeInsets.all(8.0),
+              padding: const EdgeInsets.all(12.0),
               itemCount: _transactions.length + (_hasMore ? 1 : 0),
               itemBuilder: (context, index) {
 
@@ -491,7 +525,7 @@ class _InvoicesScreenState extends State<InvoicesScreen> {
                   return const Center(
                       child: Padding(
                           padding: EdgeInsets.all(15.0),
-                          child: CircularProgressIndicator()
+                          child: CircularProgressIndicator(color: Color(0xFF00E676))
                       )
                   );
                 }
@@ -500,112 +534,145 @@ class _InvoicesScreenState extends State<InvoicesScreen> {
                 bool estEntree = trans.type == 'ENTREE';
 
                 return Card(
-                  margin: const EdgeInsets.symmetric(vertical: 6, horizontal: 4),
+                  color: const Color(0xFF1D1E33),
+                  margin: const EdgeInsets.symmetric(vertical: 6),
                   shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
-                    side: BorderSide(color: Colors.grey.shade200, width: 1),
+                    borderRadius: BorderRadius.circular(15),
+                    side: BorderSide(color: Colors.white.withValues(alpha: 0.05), width: 1),
                   ),
-                  child: ListTile(
-                    // LIAISON DE L'APPUI LONG ICI
+                  child: InkWell(
+                    borderRadius: BorderRadius.circular(15),
                     onLongPress: () => _afficherBoiteAnnulation(context, trans),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.center,
+                        children: [
+                          // --- 1. L'ICÔNE (Leading) ---
+                          CircleAvatar(
+                            backgroundColor: estEntree
+                                ? Colors.blueAccent.withValues(alpha: 0.15)
+                                : const Color(0xFF00E676).withValues(alpha: 0.15),
+                            child: Icon(
+                              estEntree ? Icons.arrow_downward : Icons.arrow_upward,
+                              color: estEntree ? Colors.blueAccent : const Color(0xFF00E676),
+                            ),
+                          ),
+                          const SizedBox(width: 15),
 
-                    leading: CircleAvatar(
-                      backgroundColor: estEntree
-                          ? Colors.blueAccent.withValues(alpha: 0.2)
-                          : Colors.greenAccent.withValues(alpha: 0.2),
-                      child: Icon(
-                        estEntree ? Icons.arrow_downward : Icons.arrow_upward,
-                        color: estEntree ? Colors.blueAccent : Colors.greenAccent,
-                      ),
-                    ),
-                    title: Text(
-                      '${trans.marque} (${estEntree ? "Ravitaillement" : "Vente"})',
-                      style: const TextStyle(fontWeight: FontWeight.bold, color: Color(0xFF1A237E)),
-                    ),
-                    subtitle: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text('Date: ${trans.date}'),
-                        const SizedBox(height: 4),
-                        Row(
-                          children: [
-                            Icon(
-                                Icons.person,
-                                size: 14,
-                                color: trans.estPaye ? Colors.grey : Colors.redAccent
+                          // --- 2. LE TEXTE CENTRAL (Title & Subtitle) ---
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  '${trans.marque} ${estEntree ? "(Ravitaillement)" : ""}',
+                                  style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.white, fontSize: 15),
+                                ),
+                                const SizedBox(height: 6),
+                                Text(trans.date, style: const TextStyle(color: Colors.white38, fontSize: 11)),
+                                const SizedBox(height: 6),
+                                Row(
+                                  children: [
+                                    Icon(
+                                        Icons.person,
+                                        size: 14,
+                                        color: trans.estPaye ? Colors.white54 : Colors.redAccent
+                                    ),
+                                    const SizedBox(width: 6),
+                                    Text(
+                                      trans.nomClient ?? "Client Anonyme",
+                                      style: TextStyle(
+                                          color: trans.estPaye ? Colors.white70 : Colors.redAccent,
+                                          fontWeight: trans.estPaye ? FontWeight.normal : FontWeight.bold,
+                                          fontSize: 13
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ],
                             ),
-                            const SizedBox(width: 4),
-                            Text(
-                              trans.nomClient ?? "Client Anonyme",
-                              style: TextStyle(
-                                  color: trans.estPaye ? Colors.grey : Colors.redAccent,
-                                  fontWeight: trans.estPaye ? FontWeight.normal : FontWeight.bold,
-                                  fontSize: 13
-                              ),
-                            ),
-                          ],
-                        ),
-                      ],
-                    ),
-                    // --- NOUVEAU TRAILING AVEC LE BOUTON PDF ---
-                    trailing: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        // Le bloc des montants existant
-                        FittedBox(
-                          fit: BoxFit.scaleDown,
-                          child: Column(
+                          ),
+
+                          // --- 3. LES MONTANTS ET BOUTONS (Trailing) ---
+                          Row(
                             mainAxisSize: MainAxisSize.min,
-                            crossAxisAlignment: CrossAxisAlignment.end,
                             children: [
-                              Text(
-                                '${trans.montant.toInt()} FCFA',
-                                style: TextStyle(
-                                  fontSize: 18,
-                                  fontWeight: FontWeight.bold,
-                                  color: estEntree ? Colors.blueAccent : Colors.green,
-                                ),
-                              ),
-                              const SizedBox(height: 2),
-                              Text(
-                                '${estEntree ? "+" : "-"}${trans.quantite} paquets',
-                                style: const TextStyle(fontSize: 12, color: Colors.grey),
-                              ),
-                              const SizedBox(height: 4),
-                              Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                                decoration: BoxDecoration(
-                                  color: trans.estPaye ? Colors.green.withValues(alpha: 0.2) : Colors.red.withValues(alpha: 0.2),
-                                  borderRadius: BorderRadius.circular(8),
-                                ),
-                                child: Text(
-                                  trans.estPaye ? 'Payé' : 'À crédit',
-                                  style: TextStyle(
-                                    fontSize: 12,
-                                    fontWeight: FontWeight.bold,
-                                    color: trans.estPaye ? Colors.green : Colors.redAccent,
+                              Column(
+                                mainAxisSize: MainAxisSize.min,
+                                crossAxisAlignment: CrossAxisAlignment.end,
+                                children: [
+                                  Text(
+                                    '${trans.montant.toInt()} F',
+                                    style: TextStyle(
+                                      fontSize: 16,
+                                      fontWeight: FontWeight.bold,
+                                      color: estEntree ? Colors.blueAccent : const Color(0xFF00E676),
+                                    ),
                                   ),
-                                ),
+                                  const SizedBox(height: 2),
+                                  // AFFICHAGE DU BÉNÉFICE (Uniquement pour les ventes)
+                                  if (!estEntree)
+                                    Text(
+                                      '+ ${trans.benefice.toInt()} F net',
+                                      style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.white70),
+                                    ),
+                                  if (estEntree)
+                                    Text(
+                                      '+ ${trans.quantite} paquets',
+                                      style: const TextStyle(fontSize: 11, color: Colors.white54),
+                                    ),
+                                  const SizedBox(height: 6),
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                                    decoration: BoxDecoration(
+                                      color: trans.estPaye
+                                          ? const Color(0xFF00E676).withValues(alpha: 0.1)
+                                          : Colors.redAccent.withValues(alpha: 0.1),
+                                      borderRadius: BorderRadius.circular(6),
+                                    ),
+                                    child: Text(
+                                      trans.estPaye ? 'PAYÉ' : 'À CRÉDIT',
+                                      style: TextStyle(
+                                        fontSize: 10,
+                                        fontWeight: FontWeight.bold,
+                                        letterSpacing: 0.5,
+                                        color: trans.estPaye ? const Color(0xFF00E676) : Colors.redAccent,
+                                      ),
+                                    ),
+                                  ),
+                                ],
                               ),
+
+                              // --- NOUVEAU : BOUTON PDF FACTURE GROUPÉE ---
+                              if (!estEntree) ...[
+                                const SizedBox(width: 5),
+                                IconButton(
+                                  icon: const Icon(Icons.picture_as_pdf, color: Color(0xFF4C4DDC)),
+                                  tooltip: 'Exporter la facture',
+                                  onPressed: () async {
+                                    final messenger = ScaffoldMessenger.of(context);
+                                    messenger.showSnackBar(
+                                      const SnackBar(content: Text('Génération de la facture...'), duration: Duration(seconds: 1)),
+                                    );
+
+                                    // REGROUPEMENT MAGIQUE : On récupère toutes les transactions
+                                    // de la liste actuelle qui ont exactement la même date/heure et le même client.
+                                    List<TransactionItem> factureGroupee = _transactions.where((t) =>
+                                    t.date == trans.date &&
+                                        t.nomClient == trans.nomClient &&
+                                        t.type == trans.type
+                                    ).toList();
+
+                                    // On envoie toute la liste au générateur PDF !
+                                    await PdfService.exporterFacture(factureGroupee);
+                                  },
+                                ),
+                              ],
                             ],
                           ),
-                        ),
-
-                        const SizedBox(width: 10),
-
-                        // Le bouton pour exporter la facture (uniquement pour les sorties/ventes)
-                        if (!estEntree)
-                          IconButton(
-                            icon: const Icon(Icons.picture_as_pdf, color: Colors.indigoAccent),
-                            tooltip: 'Exporter la facture',
-                            onPressed: () async {
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                const SnackBar(content: Text('Génération de la facture...'), duration: Duration(seconds: 1)),
-                              );
-                              await PdfService.exporterFacture(trans);
-                            },
-                          ),
-                      ],
+                        ],
+                      ),
                     ),
                   ),
                 );
@@ -622,7 +689,7 @@ class _InvoicesScreenState extends State<InvoicesScreen> {
       padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
       decoration: BoxDecoration(
         color: couleur.withValues(alpha: 0.1),
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(15),
         border: Border.all(color: couleur.withValues(alpha: 0.3), width: 1.5),
       ),
       child: Column(
@@ -631,13 +698,13 @@ class _InvoicesScreenState extends State<InvoicesScreen> {
           const SizedBox(height: 6),
           Text(
             valeur,
-            style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: couleur),
+            style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: couleur),
           ),
-          const SizedBox(height: 2),
+          const SizedBox(height: 4),
           Text(
             titre,
             textAlign: TextAlign.center,
-            style: const TextStyle(fontSize: 12, color: Colors.black87, fontWeight: FontWeight.w600),
+            style: const TextStyle(fontSize: 11, color: Colors.white70, fontWeight: FontWeight.bold, letterSpacing: 0.5),
           ),
         ],
       ),

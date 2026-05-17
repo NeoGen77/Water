@@ -1,11 +1,8 @@
+import 'package:flutter/foundation.dart';
 import 'package:sqflite/sqflite.dart';
 import 'package:path/path.dart';
 import '../models/water_item.dart';
 import '../models/transaction_item.dart';
-import 'package:flutter/foundation.dart'; // <-- AJOUTE CETTE LIGNE
-import 'package:sqflite/sqflite.dart';
-import 'package:path/path.dart';
-import 'package:flutter/foundation.dart';
 
 class DBHelper {
   static Database? _database;
@@ -20,7 +17,22 @@ class DBHelper {
   Future<Database> _initDB(String filePath) async {
     final dbPath = await getDatabasesPath();
     final path = join(dbPath, filePath);
-    return await openDatabase(path, version: 1, onCreate: _createDB);
+    return await openDatabase(
+      path,
+      version: 3, // PASSAGE EN VERSION 2 POUR LE PRIX D'ACHAT
+      onCreate: _createDB,
+      onUpgrade: _upgradeDB, // NOUVEAU : Fonction de mise à jour
+    );
+  }
+
+  // --- NOUVEAU : Met à jour la base existante sans perdre les données ---
+  Future _upgradeDB(Database db, int oldVersion, int newVersion) async {
+    if (oldVersion < 2) {
+      await db.execute('ALTER TABLE water_items ADD COLUMN prix_achat REAL NOT NULL DEFAULT 0.0');
+    }
+    if (oldVersion < 3) {
+      await db.execute('ALTER TABLE transactions ADD COLUMN benefice REAL NOT NULL DEFAULT 0.0');
+    }
   }
 
   Future _createDB(Database db, int version) async {
@@ -31,6 +43,7 @@ class DBHelper {
         format TEXT NOT NULL,
         quantite INTEGER NOT NULL,
         seuil_alerte INTEGER NOT NULL,
+        prix_achat REAL NOT NULL DEFAULT 0.0, -- NOUVELLE COLONNE
         prix_vente REAL NOT NULL
       )
     ''');
@@ -43,6 +56,7 @@ class DBHelper {
         type TEXT NOT NULL,
         quantite INTEGER NOT NULL,
         montant REAL NOT NULL,
+        benefice REAL NOT NULL,
         date TEXT NOT NULL,
         est_paye INTEGER NOT NULL,
         statut TEXT NOT NULL,
@@ -144,7 +158,6 @@ class DBHelper {
     return List.generate(maps.length, (i) => TransactionItem.fromMap(maps[i]));
   }
 
-  // --- MISE À JOUR : Calcul du VRAI cash en caisse ---
   Future<Map<String, double>> getBilanFinancier({String filter = 'Tout'}) async {
     final db = await database;
     String whereClause = 'statut = ?';
@@ -159,26 +172,27 @@ class DBHelper {
       whereArgs.add('${now.toString().substring(0, 7)}%');
     }
 
-    // On récupère aussi 'est_paye' pour séparer virtuellement les dettes du cash
     var resultat = await db.rawQuery('''
-      SELECT type, SUM(montant) as total, est_paye
+      SELECT type, SUM(montant) as total, SUM(benefice) as total_benefice
       FROM transactions
       WHERE $whereClause
-      GROUP BY type, est_paye
+      GROUP BY type
     ''', whereArgs);
 
-    double recettes = 0; // Argent physiquement entré
-    double depenses = 0; // Argent physiquement sorti
+    double ventes = 0;
+    double depenses = 0;
+    double benefices = 0;
 
     for (var row in resultat) {
       if (row['type'] == 'ENTREE') {
         depenses += (row['total'] as num?)?.toDouble() ?? 0.0;
-      } else if (row['type'] == 'SORTIE' && row['est_paye'] == 1) {
-        // NOUVEAU : On n'ajoute aux recettes QUE si c'est payé !
-        recettes += (row['total'] as num?)?.toDouble() ?? 0.0;
+      } else if (row['type'] == 'SORTIE') {
+        ventes += (row['total'] as num?)?.toDouble() ?? 0.0;
+        // On récupère le bénéfice calculé lors de chaque vente
+        benefices += (row['total_benefice'] as num?)?.toDouble() ?? 0.0;
       }
     }
-    return {'recettes': recettes, 'depenses': depenses};
+    return {'ventes': ventes, 'depenses': depenses, 'benefices': benefices};
   }
 
   Future<List<TransactionItem>> getTransactionsEnAttente() async {
@@ -222,13 +236,10 @@ class DBHelper {
   // MÉTHODES POUR LA GESTION DES DETTES
   // ==========================================
 
-  // --- MISE À JOUR : Changer la date lors de l'encaissement ---
   Future<int> solderDette(int id) async {
     final db = await database;
-    // On récupère l'heure exacte du moment où on clique sur "Encaisser"
     String today = DateTime.now().toString().substring(0, 19);
 
-    // On met à jour le statut ET la date pour que l'argent rentre dans la caisse d'aujourd'hui
     return await db.rawUpdate(
         'UPDATE transactions SET est_paye = ?, date = ? WHERE id = ?',
         [1, today, id]
@@ -240,7 +251,7 @@ class DBHelper {
     final List<Map<String, dynamic>> maps = await db.query(
         'transactions',
         where: 'type = ? AND est_paye = ? AND statut = ?',
-        whereArgs: ['SORTIE', 0, 'VALIDEE'], // 0 = non payé
+        whereArgs: ['SORTIE', 0, 'VALIDEE'],
         orderBy: 'id DESC'
     );
     return List.generate(maps.length, (i) => TransactionItem.fromMap(maps[i]));
@@ -250,20 +261,12 @@ class DBHelper {
   // NOUVELLES MÉTHODES : CLÔTURE DE CAISSE & RAPPORTS
   // ==========================================
 
-  // 1. Calculer le pré-bilan exact du jour (ce que le tiroir devrait contenir)
   Future<Map<String, dynamic>> preparerClotureJour(String dateDuJour) async {
     final db = await database;
 
-    // Recettes réelles (Ventes payées comptant + Crédits antérieurs encaissés aujourd'hui)
     var ventesPayees = await db.rawQuery("SELECT SUM(montant) as total FROM transactions WHERE type = 'SORTIE' AND est_paye = 1 AND statut = 'VALIDEE' AND date LIKE '$dateDuJour%'");
-
-    // Dépenses (Ravitaillements)
     var depenses = await db.rawQuery("SELECT SUM(montant) as total FROM transactions WHERE type = 'ENTREE' AND statut = 'VALIDEE' AND date LIKE '$dateDuJour%'");
-
-    // Crédits accordés aujourd'hui (Argent dehors)
     var credits = await db.rawQuery("SELECT SUM(montant) as total FROM transactions WHERE type = 'SORTIE' AND est_paye = 0 AND statut = 'VALIDEE' AND date LIKE '$dateDuJour%'");
-
-    // Nombre total d'opérations de vente
     var countVentes = await db.rawQuery("SELECT COUNT(id) as total FROM transactions WHERE type = 'SORTIE' AND statut = 'VALIDEE' AND date LIKE '$dateDuJour%'");
 
     double totalEntrees = (ventesPayees.first['total'] as num?)?.toDouble() ?? 0.0;
@@ -272,7 +275,6 @@ class DBHelper {
     int nombreVentes = (countVentes.first['total'] as int?) ?? 0;
     String topVente = await getTopSellingProduct();
 
-    // Cash Théorique = Entrées réelles - Dépenses du jour
     double cashTheorique = totalEntrees - totalSorties;
 
     return {
@@ -280,27 +282,23 @@ class DBHelper {
       'total_entrees': totalEntrees,
       'total_sorties': totalSorties,
       'total_credits_accordes': totalCreditsAccordes,
-      'total_credits_encaisses': 0.0, // Réservé pour de futures analyses plus fines
+      'total_credits_encaisses': 0.0,
       'cash_theorique': cashTheorique,
       'nombre_ventes': nombreVentes,
       'marque_top_vente': topVente
     };
   }
 
-  // 2. Figer et sauvegarder le bilan du jour avec le cash compté manuellement
   Future<int> enregistrerCloture(Map<String, dynamic> bilanMap) async {
     final db = await database;
-    // conflictAlgorithm.replace permet d'écraser la clôture si on la refait le même jour
     return await db.insert('bilans_journaliers', bilanMap, conflictAlgorithm: ConflictAlgorithm.replace);
   }
 
-  // 3. Lire l'historique complet pour afficher les archives des clôtures passées
   Future<List<Map<String, dynamic>>> getHistoriqueBilans() async {
     final db = await database;
     return await db.query('bilans_journaliers', orderBy: 'date_cloture DESC');
   }
 
-  // 4. Calculer le rapport global sur une période (ex: la Semaine ou le Mois)
   Future<Map<String, dynamic>> getRapportHebdomadaire(String dateDebut, String dateFin) async {
     final db = await database;
     var res = await db.rawQuery('''
@@ -326,19 +324,20 @@ class DBHelper {
     }
     return {};
   }
-  // ==========================================
-  // OPTION B : RAPPORTS AUTOMATIQUES SANS CLÔTURE MANUELLE
+
+// ==========================================
+  // RAPPORTS AUTOMATIQUES SANS CLÔTURE MANUELLE
   // ==========================================
   Future<List<Map<String, dynamic>>> getRapportsJournaliersAutomatiques() async {
     final db = await database;
 
-    // On regroupe les transactions par les 10 premiers caractères de la date (YYYY-MM-DD)
     return await db.rawQuery('''
       SELECT 
         substr(date, 1, 10) as jour,
         SUM(CASE WHEN type = 'SORTIE' AND est_paye = 1 THEN montant ELSE 0 END) as recettes,
         SUM(CASE WHEN type = 'ENTREE' THEN montant ELSE 0 END) as depenses,
         SUM(CASE WHEN type = 'SORTIE' AND est_paye = 0 THEN montant ELSE 0 END) as credits,
+        SUM(CASE WHEN type = 'SORTIE' THEN benefice ELSE 0 END) as benefice_net, -- NOUVEAU : Calcul du profit
         COUNT(id) as nombre_operations
       FROM transactions
       WHERE statut = 'VALIDEE'
@@ -346,13 +345,12 @@ class DBHelper {
       ORDER BY jour DESC
     ''');
   }
-  // Permet d'écraser un produit en base locale depuis un dictionnaire Cloud
+
   Future<void> updateWaterItemMapSilencieux(Map<String, dynamic> map) async {
     final db = await database;
     await db.insert('water_items', map, conflictAlgorithm: ConflictAlgorithm.replace);
   }
 
-  // Permet d'écraser une transaction en base locale depuis un dictionnaire Cloud
   Future<void> insertTransactionSilencieux(Map<String, dynamic> map) async {
     final db = await database;
     await db.insert('transactions', map, conflictAlgorithm: ConflictAlgorithm.replace);
@@ -363,34 +361,32 @@ class DBHelper {
   // ==========================================
   Future<void> fermerBaseDeDonnees() async {
     if (_database != null) {
-      await _database!.close(); // Ferme la connexion active
-      _database = null;         // Réinitialise la mémoire
+      await _database!.close();
+      _database = null;
       debugPrint("Base de données fermée avec succès.");
     }
   }
+
   // ==========================================
   // ANNULATION D'UNE TRANSACTION AVEC CORRECTION DE STOCK
   // ==========================================
   Future<bool> annulerTransaction(int idTransaction) async {
     final db = await database;
     try {
-      // On utilise txn (Transaction SQL) pour garantir que si une étape échoue, tout s'annule
       await db.transaction((txn) async {
 
-        // 1. Récupérer les détails de la transaction avant de la supprimer
         final List<Map<String, dynamic>> transData = await txn.query(
             'transactions',
             where: 'id = ?',
             whereArgs: [idTransaction]
         );
 
-        if (transData.isEmpty) return; // La transaction n'existe plus
+        if (transData.isEmpty) return;
 
         int waterItemId = transData.first['water_item_id'];
         int quantite = transData.first['quantite'];
         String type = transData.first['type'];
 
-        // 2. Récupérer le stock actuel de cet article
         final List<Map<String, dynamic>> itemData = await txn.query(
             'water_items',
             where: 'id = ?',
@@ -400,11 +396,8 @@ class DBHelper {
         if (itemData.isNotEmpty) {
           int stockActuel = itemData.first['quantite'];
 
-          // 3. Calculer le nouveau stock (Inverser l'opération)
-          // Si on avait vendu (SORTIE), on remet le stock (+). Si on avait ravitaillé (ENTREE), on l'enlève (-).
           int nouveauStock = type == 'SORTIE' ? (stockActuel + quantite) : (stockActuel - quantite);
 
-          // Mettre à jour le stock
           await txn.update(
               'water_items',
               {'quantite': nouveauStock},
@@ -413,17 +406,16 @@ class DBHelper {
           );
         }
 
-        // 4. Supprimer définitivement la transaction de l'historique
         await txn.delete(
             'transactions',
             where: 'id = ?',
             whereArgs: [idTransaction]
         );
       });
-      return true; // Succès
+      return true;
     } catch (e) {
       debugPrint("Erreur lors de l'annulation de la transaction : $e");
-      return false; // Échec
+      return false;
     }
   }
 
@@ -434,18 +426,12 @@ class DBHelper {
     final db = await database;
     try {
       await db.transaction((txn) async {
-        // 1. Vider l'historique des transactions
         await txn.delete('transactions');
-
-        // (Si tu as une table dettes, décommente la ligne suivante)
-        // await txn.delete('dettes');
-
-        // 2. Remettre le stock de toutes les marques d'eau à ZÉRO
         await txn.update('water_items', {'quantite': 0});
       });
       debugPrint("✅ Base de données réinitialisée avec succès.");
     } catch (e) {
-        debugPrint("❌ Erreur lors de la réinitialisation : $e");
+      debugPrint("❌ Erreur lors de la réinitialisation : $e");
     }
   }
 }

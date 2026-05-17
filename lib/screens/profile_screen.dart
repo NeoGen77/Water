@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../database/db_helper.dart';
 import 'login_screen.dart';
+import 'finance_screen.dart'; // NOUVEAU : Import de l'écran financier
 
 class ProfileScreen extends StatefulWidget {
   final bool isAdmin;
@@ -143,7 +144,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       return;
                     }
 
-                    // 2. Capture des outils AVANT le await (Parfait !)
                     final messenger = ScaffoldMessenger.of(context);
                     final navigator = Navigator.of(ctx);
 
@@ -161,11 +161,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       estAutorise = true;
                     }
 
-                    // 4. Sauvegarde et notifications (Nettoyé des doublons)
+                    // 4. Sauvegarde et notifications
                     if (estAutorise) {
                       await prefs.setString(roleCle, nouveau);
 
-                      // Utilisation des outils capturés
                       navigator.pop();
                       messenger.showSnackBar(
                         const SnackBar(content: Text('✅ Mot de passe modifié avec succès !'), backgroundColor: Colors.green),
@@ -244,17 +243,19 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   foregroundColor: Colors.white,
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))),
               onPressed: () async {
+                final messenger = ScaffoldMessenger.of(context);
+                final navigator = Navigator.of(ctx);
+
                 if (codeController.text == _codeReset) {
-                  Navigator.pop(ctx);
+                  navigator.pop();
                   await DBHelper().reinitialiserBaseDeDonnees();
 
-                  if (!mounted) return;
-                  ScaffoldMessenger.of(context).showSnackBar(
+                  messenger.showSnackBar(
                     const SnackBar(content: Text('✅ Application remise à zéro avec succès.'), backgroundColor: Colors.green),
                   );
                   _seDeconnecter(); // On déconnecte pour rafraîchir
                 } else {
-                  ScaffoldMessenger.of(context).showSnackBar(
+                  messenger.showSnackBar(
                     const SnackBar(content: Text('❌ Code incorrect. Action refusée.'), backgroundColor: Colors.redAccent),
                   );
                 }
@@ -355,7 +356,23 @@ class _ProfileScreenState extends State<ProfileScreen> {
             ),
             const SizedBox(height: 10),
 
-            // NOUVEAU : Bouton pour changer le mot de passe
+            // NOUVEAU : BOUTON FINANCE (Visible uniquement pour l'admin)
+            if (widget.isAdmin) ...[
+              _buildBoutonAction(
+                titre: "Tableau de Bord Financier",
+                sousTitre: "Analyse des bénéfices, marges et rentabilité",
+                icone: Icons.insights,
+                couleur: const Color(0xFF4C4DDC), // Couleur Admin
+                onTap: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (context) => const FinanceScreen()),
+                  );
+                },
+              ),
+              const SizedBox(height: 15),
+            ],
+
             _buildBoutonAction(
               titre: "Changer le mot de passe",
               sousTitre: "Mettre à jour vos identifiants de connexion",
@@ -395,7 +412,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
             ],
 
             const SizedBox(height: 40),
-            const Text("WaterStock App v1.0", style: TextStyle(color: Colors.white24, fontSize: 12)),
+            const Text("Dépôt Eau Pro v3.0", style: TextStyle(color: Colors.white24, fontSize: 12)),
+            const SizedBox(height: 20),
           ],
         ),
       ),

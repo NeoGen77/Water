@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../database/db_helper.dart';
 import '../models/transaction_item.dart';
+import '../services/pdf_service.dart';
 
 class DebtsScreen extends StatefulWidget {
   const DebtsScreen({super.key});
@@ -10,8 +11,7 @@ class DebtsScreen extends StatefulWidget {
 }
 
 class _DebtsScreenState extends State<DebtsScreen> {
-  late Future<List<TransactionItem>> _dettes;
-  double _totalDettes = 0;
+  late Future<List<TransactionItem>> _dettesFuture;
 
   @override
   void initState() {
@@ -21,190 +21,261 @@ class _DebtsScreenState extends State<DebtsScreen> {
 
   void _chargerDettes() {
     setState(() {
-      _dettes = DBHelper().getToutesLesDettes().then((liste) {
-        double total = 0;
-        for (var item in liste) {
-          total += item.montant;
-        }
-        setState(() {
-          _totalDettes = total;
-        });
-        return liste;
-      });
+      _dettesFuture = DBHelper().getToutesLesDettes();
     });
   }
 
-  void _confirmerPaiement(TransactionItem dette) {
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
-        title: const Text('Encaisser la dette', style: TextStyle(color: Colors.green)),
-        content: Text(
-            'Confirmez-vous que le client "${dette.nomClient}" a bien réglé sa facture de ${dette.montant.toInt()} FCFA (Date: ${dette.date}) ?'
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text('Annuler', style: TextStyle(color: Colors.grey)),
-          ),
-          ElevatedButton.icon(
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.green,
-              foregroundColor: Colors.white,
-            ),
-            icon: const Icon(Icons.check_circle),
-            label: const Text('Oui, encaisser'),
-            onPressed: () async {
-              await DBHelper().solderDette(dette.id!);
-              if (mounted) Navigator.pop(ctx);
-              _chargerDettes();
-              if (mounted) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    content: Text('Dette de ${dette.nomClient} réglée avec succès !'),
-                    backgroundColor: Colors.green,
-                  ),
-                );
-              }
-            },
-          ),
-        ],
+  // Fonction pour solder une dette précise
+  void _solderDette(TransactionItem dette) async {
+    final messenger = ScaffoldMessenger.of(context);
+
+    await DBHelper().solderDette(dette.id!);
+    _chargerDettes(); // Rafraîchir la liste
+
+    messenger.showSnackBar(
+      SnackBar(
+        content: Text('✅ Paiement de ${dette.montant.toInt()} F encaissé !'),
+        backgroundColor: Colors.green,
       ),
     );
+  }
+
+  // --- LOGIQUE DE REGROUPEMENT PAR CLIENT ---
+  Map<String, List<TransactionItem>> _grouperParClient(List<TransactionItem> dettes) {
+    Map<String, List<TransactionItem>> dettesParClient = {};
+    for (var dette in dettes) {
+      String nom = dette.nomClient ?? "Client Anonyme";
+      if (!dettesParClient.containsKey(nom)) {
+        dettesParClient[nom] = [];
+      }
+      dettesParClient[nom]!.add(dette);
+    }
+    return dettesParClient;
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: const Color(0xFF0A0E21),
       appBar: AppBar(
-        title: const Text('Suivi des Crédits'),
-        backgroundColor: Colors.redAccent,
-        foregroundColor: Colors.white,
+        title: const Text('Suivi des Crédits', style: TextStyle(fontWeight: FontWeight.bold)),
+        backgroundColor: const Color(0xFF0A0E21),
+        elevation: 0,
       ),
-      body: Column(
-        children: [
-          // --- BANDEAU TOTAL DES IMPAYÉS ---
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.all(20),
-            margin: const EdgeInsets.all(15),
-            decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  colors: [Colors.redAccent, Colors.red.shade800],
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                ),
-                borderRadius: BorderRadius.circular(15),
-                boxShadow: [
-                  BoxShadow(color: Colors.red.withValues(alpha: 0.3), blurRadius: 10, offset: const Offset(0, 5)),
-                ]
-            ),
-            child: Column(
-              children: [
-                const Text(
-                  'TOTAL ARGENT DEHORS',
-                  style: TextStyle(color: Colors.white70, fontWeight: FontWeight.bold, letterSpacing: 1.2),
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  '${_totalDettes.toInt()} FCFA',
-                  style: const TextStyle(color: Colors.white, fontSize: 32, fontWeight: FontWeight.bold),
-                ),
-              ],
-            ),
-          ),
+      body: FutureBuilder<List<TransactionItem>>(
+        future: _dettesFuture,
+        builder: (context, snapshot) {
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return const Center(child: CircularProgressIndicator(color: Colors.redAccent));
+          } else if (!snapshot.hasData || snapshot.data!.isEmpty) {
+            return Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(Icons.thumb_up_alt_outlined, size: 80, color: Colors.white.withValues(alpha: 0.2)),
+                  const SizedBox(height: 20),
+                  const Text('Excellente nouvelle !', style: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold)),
+                  const SizedBox(height: 10),
+                  const Text('Aucun client ne vous doit de l\'argent.', style: TextStyle(color: Colors.white54, fontSize: 16)),
+                ],
+              ),
+            );
+          }
 
-          // --- LISTE DES CLIENTS QUI DOIVENT DE L'ARGENT ---
-          Expanded(
-            child: FutureBuilder<List<TransactionItem>>(
-              future: _dettes,
-              builder: (context, snapshot) {
-                if (snapshot.connectionState == ConnectionState.waiting) {
-                  return const Center(child: CircularProgressIndicator());
-                } else if (!snapshot.hasData || snapshot.data!.isEmpty) {
-                  return const Center(
+          final dettesNonGroupees = snapshot.data!;
+
+          // Calcul du total global dehors
+          double totalDehors = 0;
+          for (var d in dettesNonGroupees) {
+            totalDehors += d.montant;
+          }
+
+          // On regroupe les dettes par nom de client
+          final dettesParClient = _grouperParClient(dettesNonGroupees);
+
+          return Column(
+            children: [
+              // --- EN-TÊTE : TOTAL DE L'ARGENT DEHORS ---
+              Container(
+                margin: const EdgeInsets.all(16),
+                padding: const EdgeInsets.all(20),
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: [Colors.redAccent.withValues(alpha: 0.2), const Color(0xFF0A0E21)],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                  ),
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(color: Colors.redAccent.withValues(alpha: 0.5)),
+                ),
+                child: Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: Colors.redAccent.withValues(alpha: 0.2),
+                        shape: BoxShape.circle,
+                      ),
+                      child: const Icon(Icons.money_off, color: Colors.redAccent, size: 30),
+                    ),
+                    const SizedBox(width: 20),
+                    Expanded(
                       child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
+                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Icon(Icons.check_circle_outline, size: 80, color: Colors.green),
-                          SizedBox(height: 16),
-                          Text('Excellente nouvelle !', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
-                          Text('Aucun crédit client en cours.', style: TextStyle(color: Colors.grey)),
+                          const Text('Total des impayés', style: TextStyle(color: Colors.white70, fontSize: 14)),
+                          Text(
+                            '${totalDehors.toInt()} FCFA',
+                            style: const TextStyle(color: Colors.redAccent, fontSize: 28, fontWeight: FontWeight.bold),
+                          ),
                         ],
-                      )
-                  );
-                }
+                      ),
+                    ),
+                  ],
+                ),
+              ),
 
-                final dettes = snapshot.data!;
+              const Align(
+                alignment: Alignment.centerLeft,
+                child: Padding(
+                  padding: EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+                  child: Text("DÉTAIL PAR CLIENT", style: TextStyle(color: Colors.white38, fontWeight: FontWeight.bold, letterSpacing: 1.2)),
+                ),
+              ),
 
-                return ListView.builder(
-                  padding: const EdgeInsets.symmetric(horizontal: 10),
-                  itemCount: dettes.length,
+              // --- LISTE DES CLIENTS ---
+              Expanded(
+                child: ListView.builder(
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  itemCount: dettesParClient.keys.length,
                   itemBuilder: (context, index) {
-                    final dette = dettes[index];
+                    String nomClient = dettesParClient.keys.elementAt(index);
+                    List<TransactionItem> dettesDuClient = dettesParClient[nomClient]!;
+
+                    // Calcul du total pour ce client
+                    double totalClient = 0;
+                    for (var d in dettesDuClient) {
+                      totalClient += d.montant;
+                    }
 
                     return Card(
-                      elevation: 2,
-                      margin: const EdgeInsets.symmetric(vertical: 6),
+                      color: const Color(0xFF1D1E33),
+                      margin: const EdgeInsets.only(bottom: 15),
                       shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
-                        side: BorderSide(color: Colors.red.withValues(alpha: 0.3), width: 1),
+                        borderRadius: BorderRadius.circular(15),
+                        side: BorderSide(color: Colors.white.withValues(alpha: 0.05)),
                       ),
-                      child: ListTile(
-                        contentPadding: const EdgeInsets.all(12),
-                        leading: CircleAvatar(
-                          backgroundColor: Colors.red.withValues(alpha: 0.1),
-                          radius: 25,
-                          child: const Icon(Icons.person, color: Colors.redAccent, size: 30),
-                        ),
-                        title: Text(
-                          dette.nomClient ?? "Anonyme",
-                          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
-                        ),
-                        subtitle: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
+                      // On utilise ExpansionTile pour pouvoir dérouler et voir le détail
+                      child: ExpansionTile(
+                        iconColor: Colors.white,
+                        collapsedIconColor: Colors.white54,
+                        title: Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
-                            const SizedBox(height: 6),
-                            Text('${dette.quantite} paquets de ${dette.marque}'),
-                            Text('Date: ${dette.date}', style: const TextStyle(color: Colors.grey, fontSize: 12)),
+                            Expanded(
+                              child: Text(
+                                nomClient,
+                                style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.white, fontSize: 16),
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                            Text(
+                              '${totalClient.toInt()} F',
+                              style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.redAccent, fontSize: 16),
+                            ),
                           ],
                         ),
-                        // CORRECTION ICI : FittedBox + MainAxisSize.min
-                        trailing: FittedBox(
-                          fit: BoxFit.scaleDown,
-                          child: Column(
-                            mainAxisSize: MainAxisSize.min, // <-- Empêche l'overflow vertical
-                            crossAxisAlignment: CrossAxisAlignment.end,
-                            children: [
-                              Text(
-                                '${dette.montant.toInt()} F',
-                                style: const TextStyle(color: Colors.redAccent, fontWeight: FontWeight.bold, fontSize: 18),
-                              ),
-                              const SizedBox(height: 4), // J'ai un peu réduit l'espace pour que ce soit plus joli
-                              SizedBox(
-                                height: 30,
-                                child: ElevatedButton(
-                                  style: ElevatedButton.styleFrom(
-                                    backgroundColor: Colors.green,
-                                    foregroundColor: Colors.white,
-                                    padding: const EdgeInsets.symmetric(horizontal: 10),
-                                  ),
-                                  onPressed: () => _confirmerPaiement(dette),
-                                  child: const Text('Encaisser', style: TextStyle(fontSize: 12)),
+                        subtitle: Text('${dettesDuClient.length} opération(s) en attente', style: const TextStyle(color: Colors.white54, fontSize: 12)),
+
+                        // --- LES DÉTAILS DÉROULANTS ---
+                        children: [
+                          const Divider(color: Colors.white10, height: 1),
+
+                          // BOUTON GÉNÉRER LE RELEVÉ PDF
+                          Padding(
+                            padding: const EdgeInsets.all(10.0),
+                            child: SizedBox(
+                              width: double.infinity,
+                              child: ElevatedButton.icon(
+                                style: ElevatedButton.styleFrom(
+                                    backgroundColor: const Color(0xFF4C4DDC).withValues(alpha: 0.1),
+                                    foregroundColor: const Color(0xFF4C4DDC),
+                                    elevation: 0,
+                                    side: const BorderSide(color: Color(0xFF4C4DDC)),
+                                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))
                                 ),
-                              )
-                            ],
+                                icon: const Icon(Icons.picture_as_pdf),
+                                label: const Text("Envoyer le relevé de compte au client", style: TextStyle(fontWeight: FontWeight.bold)),
+                                onPressed: () async {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    const SnackBar(content: Text('Génération du relevé en cours...'), duration: Duration(seconds: 1)),
+                                  );
+                                  // APPEL MAGIQUE VERS TON NOUVEAU SERVICE PDF
+                                  await PdfService.exporterReleveClient(nomClient, dettesDuClient);
+                                },
+                              ),
+                            ),
                           ),
-                        ),
+
+                          // LISTE DES FACTURES INDIVIDUELLES
+                          ...dettesDuClient.map((dette) {
+                            return ListTile(
+                              contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 5),
+                              leading: Container(
+                                padding: const EdgeInsets.all(8),
+                                decoration: BoxDecoration(
+                                    color: Colors.orangeAccent.withValues(alpha: 0.1),
+                                    borderRadius: BorderRadius.circular(8)
+                                ),
+                                child: const Icon(Icons.hourglass_empty, color: Colors.orangeAccent, size: 20),
+                              ),
+                              title: Text('${dette.marque} (${dette.quantite} pqt)', style: const TextStyle(color: Colors.white, fontSize: 14)),
+                              subtitle: Text(dette.date, style: const TextStyle(color: Colors.white38, fontSize: 11)),
+                              trailing: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Text('${dette.montant.toInt()} F', style: const TextStyle(color: Colors.white70, fontWeight: FontWeight.bold)),
+                                  const SizedBox(width: 10),
+                                  // BOUTON ENCAISSER
+                                  IconButton(
+                                    icon: const Icon(Icons.check_circle_outline, color: Color(0xFF00E676)),
+                                    tooltip: 'Marquer comme payé',
+                                    onPressed: () {
+                                      showDialog(
+                                        context: context,
+                                        builder: (ctx) => AlertDialog(
+                                          backgroundColor: const Color(0xFF1D1E33),
+                                          title: const Text('Encaisser cette dette ?', style: TextStyle(color: Colors.white)),
+                                          content: Text('Confirmez-vous avoir reçu ${dette.montant.toInt()} F pour cette vente de ${dette.marque} ?', style: const TextStyle(color: Colors.white70)),
+                                          actions: [
+                                            TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Annuler', style: TextStyle(color: Colors.white54))),
+                                            ElevatedButton(
+                                              style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF00E676), foregroundColor: Colors.black),
+                                              onPressed: () {
+                                                Navigator.pop(ctx);
+                                                _solderDette(dette);
+                                              },
+                                              child: const Text('Oui, Encaisser', style: TextStyle(fontWeight: FontWeight.bold)),
+                                            ),
+                                          ],
+                                        ),
+                                      );
+                                    },
+                                  ),
+                                ],
+                              ),
+                            );
+                          }),
+                          const SizedBox(height: 10),
+                        ],
                       ),
                     );
                   },
-                );
-              },
-            ),
-          ),
-        ],
+                ),
+              ),
+            ],
+          );
+        },
       ),
     );
   }

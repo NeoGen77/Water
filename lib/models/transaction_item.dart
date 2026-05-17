@@ -5,10 +5,11 @@ class TransactionItem {
   final String type;
   final int quantite;
   final double montant;
+  final double benefice; // NOUVEAU : Le bénéfice net généré par cette transaction
   final String date;
   final bool estPaye;
   final String statut;
-  final String? nomClient; // NOUVEAU
+  final String? nomClient;
 
   TransactionItem({
     this.id,
@@ -17,6 +18,7 @@ class TransactionItem {
     required this.type,
     required this.quantite,
     required this.montant,
+    required this.benefice, // NOUVEAU
     required this.date,
     required this.estPaye,
     this.statut = 'VALIDEE',
@@ -31,6 +33,7 @@ class TransactionItem {
       'type': type,
       'quantite': quantite,
       'montant': montant,
+      'benefice': benefice, // NOUVEAU
       'date': date,
       'est_paye': estPaye ? 1 : 0,
       'statut': statut,
@@ -46,6 +49,7 @@ class TransactionItem {
       type: map['type'],
       quantite: map['quantite'],
       montant: map['montant'],
+      benefice: map['benefice'] ?? 0.0, // NOUVEAU : 0.0 par défaut pour éviter un crash sur les anciennes données
       date: map['date'],
       estPaye: map['est_paye'] == 1,
       statut: map['statut'] ?? 'VALIDEE',
