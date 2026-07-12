@@ -1,9 +1,9 @@
 name: waterstock
-description: "A new Flutter project."
+description: "Gestion de dépôt d'eau - stock, caisse, clients et rapports."
 
 publish_to: 'none'
 
-version: 1.0.0+1
+version: 4.0.0+4
 
 environment:
   sdk: ^3.11.5
@@ -16,10 +16,15 @@ dependencies:
   sqflite_common_ffi: ^2.3.3
   sqflite: ^2.3.3+1
   path: ^1.9.0
+  path_provider: ^2.1.4
   file_picker: ^8.0.0
   pdf: ^3.12.0
   printing: ^5.14.3
   shared_preferences: ^2.5.5
+  crypto: ^3.0.5
+  intl: ^0.20.2
+  fl_chart: ^0.69.0
+  excel: ^4.0.6
 
 dev_dependencies:
   flutter_test:

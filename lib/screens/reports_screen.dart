@@ -1,5 +1,9 @@
 import 'package:flutter/material.dart';
-import '../database/db_helper.dart';
+
+import '../core/formats.dart';
+import '../core/theme.dart';
+import '../data/commande_repo.dart';
+import '../services/export_service.dart';
 
 class ReportsScreen extends StatefulWidget {
   const ReportsScreen({super.key});
@@ -14,79 +18,90 @@ class _ReportsScreenState extends State<ReportsScreen> {
   @override
   void initState() {
     super.initState();
-    _chargerRapports();
+    _rapports = CommandeRepo().rapportsJournaliers();
   }
 
-  void _chargerRapports() {
-    setState(() {
-      _rapports = DBHelper().getRapportsJournaliersAutomatiques();
-    });
+  Future<void> _exporterExcel() async {
+    final messenger = ScaffoldMessenger.of(context);
+    messenger.showSnackBar(const SnackBar(
+        content: Text('Préparation du rapport Excel...'),
+        duration: Duration(seconds: 1)));
+    final chemin = await ExportService.exporterRapportExcel();
+    messenger.showSnackBar(
+      chemin != null
+          ? SnackBar(
+              content: Text('✅ Rapport Excel créé : $chemin'),
+              backgroundColor: Colors.green)
+          : const SnackBar(
+              content: Text('Export annulé ou impossible.'),
+              backgroundColor: Colors.orangeAccent),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFF0A0E21), // Fond Dark
+      backgroundColor: AppColors.fond,
       appBar: AppBar(
-        title: const Text('Rapports & Bénéfices', style: TextStyle(fontWeight: FontWeight.bold)),
-        backgroundColor: const Color(0xFF0A0E21),
-        elevation: 0,
+        title: const Text('Rapports & Bénéfices'),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.table_view, color: AppColors.succes),
+            tooltip: 'Exporter en Excel',
+            onPressed: _exporterExcel,
+          ),
+        ],
       ),
       body: FutureBuilder<List<Map<String, dynamic>>>(
         future: _rapports,
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting) {
-            return const Center(child: CircularProgressIndicator(color: Color(0xFF00E676)));
+            return const Center(
+                child: CircularProgressIndicator(color: AppColors.succes));
           } else if (!snapshot.hasData || snapshot.data!.isEmpty) {
             return Center(
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  Icon(Icons.insert_chart_outlined, size: 80, color: Colors.white.withValues(alpha: 0.2)),
+                  Icon(Icons.insert_chart_outlined,
+                      size: 80, color: Colors.white.withValues(alpha: 0.2)),
                   const SizedBox(height: 20),
-                  const Text('Aucune donnée enregistrée.', style: TextStyle(color: Colors.white54, fontSize: 16)),
+                  const Text('Aucune donnée enregistrée.',
+                      style: TextStyle(color: Colors.white54, fontSize: 16)),
                 ],
               ),
             );
           }
 
           final jours = snapshot.data!;
-
           return ListView.builder(
             padding: const EdgeInsets.all(16),
             itemCount: jours.length,
             itemBuilder: (context, index) {
-              final jourDonnees = jours[index];
-
-              String date = jourDonnees['jour'];
-              // La requête SQL renvoie "recettes", mais on l'affiche comme "Ventes"
-              double ventes = (jourDonnees['recettes'] as num?)?.toDouble() ?? 0.0;
-              double depenses = (jourDonnees['depenses'] as num?)?.toDouble() ?? 0.0;
-              double credits = (jourDonnees['credits'] as num?)?.toDouble() ?? 0.0;
-
-              // Récupération du vrai bénéfice
-              double beneficeNet = (jourDonnees['benefice_net'] as num?)?.toDouble() ?? 0.0;
-
-              int operations = jourDonnees['nombre_operations'] as int;
-
-              // Cash en caisse (Flux de trésorerie)
-              double soldeCaisse = ventes - depenses;
+              final jour = jours[index];
+              final date = jour['jour'] as String;
+              final ventes = (jour['ventes'] as num?)?.toDouble() ?? 0.0;
+              final depenses = (jour['depenses'] as num?)?.toDouble() ?? 0.0;
+              final encaisse = (jour['encaisse'] as num?)?.toDouble() ?? 0.0;
+              final benefice = (jour['benefice'] as num?)?.toDouble() ?? 0.0;
+              final operations = (jour['operations'] as num?)?.toInt() ?? 0;
+              final cash = encaisse - depenses;
 
               return Card(
-                color: const Color(0xFF1D1E33),
+                color: AppColors.carte,
                 elevation: 8,
                 shadowColor: Colors.black45,
                 margin: const EdgeInsets.only(bottom: 16),
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(20),
-                  side: BorderSide(color: Colors.white.withValues(alpha: 0.05), width: 1),
+                  side: BorderSide(
+                      color: Colors.white.withValues(alpha: 0.05), width: 1),
                 ),
                 child: Padding(
                   padding: const EdgeInsets.all(20),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      // --- EN-TÊTE ---
                       Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
@@ -95,63 +110,71 @@ class _ReportsScreenState extends State<ReportsScreen> {
                               Container(
                                 padding: const EdgeInsets.all(8),
                                 decoration: BoxDecoration(
-                                  color: const Color(0xFF4C4DDC).withValues(alpha: 0.2),
+                                  color: AppColors.primaire
+                                      .withValues(alpha: 0.2),
                                   borderRadius: BorderRadius.circular(10),
                                 ),
-                                child: const Icon(Icons.calendar_today, color: Color(0xFF4C4DDC), size: 20),
+                                child: const Icon(Icons.calendar_today,
+                                    color: AppColors.primaire, size: 20),
                               ),
                               const SizedBox(width: 12),
-                              Text(
-                                date,
-                                style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.white),
-                              ),
+                              Text(date,
+                                  style: const TextStyle(
+                                      fontSize: 18,
+                                      fontWeight: FontWeight.bold,
+                                      color: Colors.white)),
                             ],
                           ),
                           Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 10, vertical: 5),
                             decoration: BoxDecoration(
                                 color: Colors.white.withValues(alpha: 0.1),
-                                borderRadius: BorderRadius.circular(12)
-                            ),
-                            child: Text('$operations actions', style: const TextStyle(fontSize: 12, color: Colors.white70)),
+                                borderRadius: BorderRadius.circular(12)),
+                            child: Text('$operations commande(s)',
+                                style: const TextStyle(
+                                    fontSize: 12, color: Colors.white70)),
                           )
                         ],
                       ),
                       const Divider(height: 30, color: Colors.white10),
-
-                      // --- CORPS : FLUX DE TRÉSORERIE ---
                       Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
                           Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              _buildLigneChiffre('Ventes', ventes, const Color(0xFF4C4DDC), Icons.shopping_bag_outlined),
+                              _ligne('Ventes', ventes, AppColors.primaire,
+                                  Icons.shopping_bag_outlined),
                               const SizedBox(height: 8),
-                              _buildLigneChiffre('Dépenses', depenses, Colors.redAccent, Icons.shopping_cart),
+                              _ligne('Dépenses', depenses, Colors.redAccent,
+                                  Icons.shopping_cart),
                               const SizedBox(height: 8),
-                              _buildLigneChiffre('Crédits', credits, Colors.orangeAccent, Icons.hourglass_empty),
+                              _ligne('Encaissé', encaisse, Colors.orangeAccent,
+                                  Icons.payments_outlined),
                             ],
                           ),
-
-                          // Pastille du Solde Caisse (Liquidité)
                           Container(
                             padding: const EdgeInsets.all(15),
                             decoration: BoxDecoration(
-                              color: const Color(0xFF0A0E21),
+                              color: AppColors.fond,
                               borderRadius: BorderRadius.circular(15),
                               border: Border.all(color: Colors.white10),
                             ),
                             child: Column(
                               children: [
-                                const Text('Cash en Caisse', style: TextStyle(fontSize: 11, color: Colors.white54)),
+                                const Text('Cash en Caisse',
+                                    style: TextStyle(
+                                        fontSize: 11, color: Colors.white54)),
                                 const SizedBox(height: 5),
                                 Text(
-                                  '${soldeCaisse >= 0 ? "+" : ""}${soldeCaisse.toInt()} F',
+                                  '${cash >= 0 ? "+" : ""}${fmtFcfa(cash)}',
                                   style: TextStyle(
                                     fontSize: 16,
                                     fontWeight: FontWeight.bold,
-                                    color: soldeCaisse >= 0 ? Colors.white : Colors.redAccent,
+                                    color: cash >= 0
+                                        ? Colors.white
+                                        : Colors.redAccent,
                                   ),
                                 ),
                               ],
@@ -159,37 +182,40 @@ class _ReportsScreenState extends State<ReportsScreen> {
                           )
                         ],
                       ),
-
                       const SizedBox(height: 20),
-
-                      // --- LE VRAI BÉNÉFICE NET ---
                       Container(
                         width: double.infinity,
-                        padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 15),
+                        padding: const EdgeInsets.symmetric(
+                            vertical: 12, horizontal: 15),
                         decoration: BoxDecoration(
-                          gradient: LinearGradient(
-                            colors: [
-                              const Color(0xFF00E676).withValues(alpha: 0.2),
-                              const Color(0xFF00E676).withValues(alpha: 0.05)
-                            ],
-                          ),
+                          gradient: LinearGradient(colors: [
+                            AppColors.succes.withValues(alpha: 0.2),
+                            AppColors.succes.withValues(alpha: 0.05)
+                          ]),
                           borderRadius: BorderRadius.circular(12),
-                          border: Border.all(color: const Color(0xFF00E676).withValues(alpha: 0.3)),
+                          border: Border.all(
+                              color: AppColors.succes.withValues(alpha: 0.3)),
                         ),
                         child: Row(
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
                             const Row(
                               children: [
-                                Icon(Icons.trending_up, color: Color(0xFF00E676), size: 20),
+                                Icon(Icons.trending_up,
+                                    color: AppColors.succes, size: 20),
                                 SizedBox(width: 8),
-                                Text('BÉNÉFICE NET', style: TextStyle(color: Color(0xFF00E676), fontWeight: FontWeight.bold, letterSpacing: 1)),
+                                Text('BÉNÉFICE NET',
+                                    style: TextStyle(
+                                        color: AppColors.succes,
+                                        fontWeight: FontWeight.bold,
+                                        letterSpacing: 1)),
                               ],
                             ),
-                            Text(
-                              '+ ${beneficeNet.toInt()} F',
-                              style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Color(0xFF00E676)),
-                            ),
+                            Text('+ ${fmtFcfa(benefice)}',
+                                style: const TextStyle(
+                                    fontSize: 18,
+                                    fontWeight: FontWeight.bold,
+                                    color: AppColors.succes)),
                           ],
                         ),
                       ),
@@ -204,14 +230,16 @@ class _ReportsScreenState extends State<ReportsScreen> {
     );
   }
 
-  // Petit widget pour afficher une ligne de chiffre propre
-  Widget _buildLigneChiffre(String titre, double montant, Color couleur, IconData icone) {
+  Widget _ligne(String titre, double montant, Color couleur, IconData icone) {
     return Row(
       children: [
         Icon(icone, size: 14, color: couleur),
         const SizedBox(width: 6),
-        Text('$titre : ', style: const TextStyle(color: Colors.white70, fontSize: 13)),
-        Text('${montant.toInt()} F', style: TextStyle(fontWeight: FontWeight.bold, color: couleur, fontSize: 14)),
+        Text('$titre : ',
+            style: const TextStyle(color: Colors.white70, fontSize: 13)),
+        Text(fmtFcfa(montant),
+            style: TextStyle(
+                fontWeight: FontWeight.bold, color: couleur, fontSize: 14)),
       ],
     );
   }
