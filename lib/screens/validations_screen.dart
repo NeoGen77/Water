@@ -24,7 +24,10 @@ class _ValidationsScreenState extends State<ValidationsScreen> {
   }
 
   void _charger() {
-    setState(() => _enAttente = _repo.enAttente());
+    final futur = _repo.enAttente();
+    setState(() {
+      _enAttente = futur;
+    });
   }
 
   Future<void> _approuver(Commande cmd) async {

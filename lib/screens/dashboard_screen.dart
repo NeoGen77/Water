@@ -24,7 +24,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 
   void _refreshStock() {
-    setState(() => _stockList = _repo.tous());
+    final futur = _repo.tous();
+    setState(() {
+      _stockList = futur;
+    });
   }
 
   void _ouvrirFormulaire(BuildContext context, {Produit? itemAEditer}) {
