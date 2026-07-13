@@ -29,7 +29,9 @@ class _MainNavigationState extends State<MainNavigation> {
     ];
 
     return Scaffold(
-      body: IndexedStack(index: _currentIndex, children: screens),
+      // Chaque changement d'onglet recrée l'écran : les données (ventes,
+      // dettes, stock) sont donc toujours rechargées depuis la base.
+      body: screens[_currentIndex],
       bottomNavigationBar: BottomNavigationBar(
         currentIndex: _currentIndex,
         type: BottomNavigationBarType.fixed,
