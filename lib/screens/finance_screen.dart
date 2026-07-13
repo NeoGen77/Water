@@ -27,6 +27,12 @@ class _FinanceScreenState extends State<FinanceScreen> {
   List<Map<String, dynamic>> _topVentes = [];
   List<Map<String, dynamic>> _serieJours = []; // 14 derniers jours
 
+  // Comparaison : ce mois (du 1er à aujourd'hui) vs même période le mois dernier
+  double _ventesMoisActuel = 0;
+  double _beneficeMoisActuel = 0;
+  double _ventesMoisPrecedent = 0;
+  double _beneficeMoisPrecedent = 0;
+
   bool _isLoading = true;
 
   @override
@@ -45,6 +51,24 @@ class _FinanceScreenState extends State<FinanceScreen> {
     final dettes = await repo.totalDettes();
     final jours = await repo.rapportsJournaliers(limitJours: 14);
 
+    // Comparaison équitable : du 1er au jour J de ce mois, contre la même
+    // tranche du mois précédent (jamais un mois entier contre un mois entamé).
+    final now = DateTime.now();
+    final debutMois = DateTime(now.year, now.month, 1);
+    final demain = DateTime(now.year, now.month, now.day)
+        .add(const Duration(days: 1));
+    final dernierJourMoisPrec = DateTime(now.year, now.month, 0).day;
+    final jourComparable =
+        now.day < dernierJourMoisPrec ? now.day : dernierJourMoisPrec;
+    final debutMoisPrec = DateTime(now.year, now.month - 1, 1);
+    final finMoisPrec = DateTime(now.year, now.month - 1, jourComparable)
+        .add(const Duration(days: 1));
+
+    final bilanActuel = await repo.bilanPeriode(
+        debutMois.toIso8601String(), demain.toIso8601String());
+    final bilanPrecedent = await repo.bilanPeriode(
+        debutMoisPrec.toIso8601String(), finMoisPrec.toIso8601String());
+
     if (!mounted) return;
     setState(() {
       _totalVentes = bilan['ventes'] ?? 0;
@@ -55,6 +79,10 @@ class _FinanceScreenState extends State<FinanceScreen> {
       _totalDettes = dettes;
       _topVentes = top.take(5).toList();
       _serieJours = jours.reversed.toList(); // chronologique
+      _ventesMoisActuel = bilanActuel['ventes'] ?? 0;
+      _beneficeMoisActuel = bilanActuel['benefices'] ?? 0;
+      _ventesMoisPrecedent = bilanPrecedent['ventes'] ?? 0;
+      _beneficeMoisPrecedent = bilanPrecedent['benefices'] ?? 0;
       _isLoading = false;
     });
   }
@@ -203,6 +231,39 @@ class _FinanceScreenState extends State<FinanceScreen> {
                                 Icons.shopping_cart,
                                 Colors.redAccent)),
                       ],
+                    ),
+                    const SizedBox(height: 25),
+
+                    // --- TENDANCE : CE MOIS VS MOIS DERNIER ---
+                    const Text('Tendance du mois',
+                        style: TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.white)),
+                    const SizedBox(height: 4),
+                    Text(
+                        'Du 1er au ${DateTime.now().day} de ce mois, comparé à '
+                        'la même période le mois dernier',
+                        style: const TextStyle(
+                            color: Colors.white38, fontSize: 12)),
+                    const SizedBox(height: 12),
+                    Container(
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        color: AppColors.carte,
+                        borderRadius: BorderRadius.circular(20),
+                        border: Border.all(
+                            color: Colors.white.withValues(alpha: 0.05)),
+                      ),
+                      child: Column(
+                        children: [
+                          _ligneComparaison('Ventes', _ventesMoisActuel,
+                              _ventesMoisPrecedent),
+                          const Divider(height: 22, color: Colors.white10),
+                          _ligneComparaison('Bénéfice', _beneficeMoisActuel,
+                              _beneficeMoisPrecedent),
+                        ],
+                      ),
                     ),
                     const SizedBox(height: 25),
 
@@ -383,6 +444,55 @@ class _FinanceScreenState extends State<FinanceScreen> {
           );
         }).toList(),
       ),
+    );
+  }
+
+  Widget _ligneComparaison(String libelle, double actuel, double precedent) {
+    final Widget indicateur;
+    if (precedent <= 0) {
+      indicateur = const Text('—  pas de comparaison',
+          style: TextStyle(color: Colors.white38, fontSize: 12));
+    } else {
+      final variation = (actuel - precedent) / precedent * 100;
+      final enHausse = variation >= 0;
+      final couleur = enHausse ? AppColors.succes : Colors.redAccent;
+      indicateur = Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(enHausse ? Icons.arrow_upward : Icons.arrow_downward,
+              color: couleur, size: 16),
+          const SizedBox(width: 4),
+          Text(
+            '${enHausse ? '+' : ''}${variation.toStringAsFixed(1)} %',
+            style: TextStyle(
+                color: couleur, fontWeight: FontWeight.bold, fontSize: 15),
+          ),
+        ],
+      );
+    }
+
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      children: [
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(libelle,
+                  style: const TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 14)),
+              const SizedBox(height: 3),
+              Text(
+                '${fmtFcfa(actuel)} ce mois  •  ${fmtFcfa(precedent)} le mois dernier',
+                style: const TextStyle(color: Colors.white54, fontSize: 12),
+              ),
+            ],
+          ),
+        ),
+        indicateur,
+      ],
     );
   }
 

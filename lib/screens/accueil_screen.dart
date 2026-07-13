@@ -50,6 +50,9 @@ class _AccueilScreenState extends State<AccueilScreen> {
   int _nbEnAttente = 0;
   double _totalDettes = 0;
   List<PrevisionRupture> _previsions = [];
+  List<Map<String, dynamic>> _dettesAnciennes = [];
+
+  static const _seuilRelanceJours = 15;
 
   @override
   void initState() {
@@ -65,6 +68,8 @@ class _AccueilScreenState extends State<AccueilScreen> {
     final dettes = await _commandeRepo.totalDettes();
     final produits = await _produitRepo.tous();
     final ventes14j = await _commandeRepo.quantitesVenduesParProduit(jours: 14);
+    final anciennes =
+        await _commandeRepo.dettesAnciennes(joursMin: _seuilRelanceJours);
 
     // Prévisions : produits en alerte ou dont le stock s'épuise sous 7 jours.
     final previsions = produits
@@ -83,6 +88,7 @@ class _AccueilScreenState extends State<AccueilScreen> {
       _nbEnAttente = enAttente;
       _totalDettes = dettes;
       _previsions = previsions;
+      _dettesAnciennes = anciennes;
       _isLoading = false;
     });
   }
@@ -225,6 +231,22 @@ class _AccueilScreenState extends State<AccueilScreen> {
                         _charger();
                       },
                     ),
+                  // --- DETTES ANCIENNES À RELANCER ---
+                  if (_dettesAnciennes.isNotEmpty) ...[
+                    const SizedBox(height: 24),
+                    const Text('Dettes à relancer',
+                        style: TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.white)),
+                    const SizedBox(height: 4),
+                    const Text(
+                        'Crédits non réglés depuis $_seuilRelanceJours jours ou plus '
+                        '— plus une dette vieillit, moins elle est payée',
+                        style: TextStyle(color: Colors.white38, fontSize: 12)),
+                    const SizedBox(height: 12),
+                    ..._dettesAnciennes.map(_carteDetteAncienne),
+                  ],
                   const SizedBox(height: 24),
 
                   // --- PRÉVISIONS DE RUPTURE ---
@@ -265,6 +287,74 @@ class _AccueilScreenState extends State<AccueilScreen> {
                 ],
               ),
             ),
+    );
+  }
+
+  Widget _carteDetteAncienne(Map<String, dynamic> dette) {
+    final anciennete = (dette['anciennete'] as num?)?.toInt() ?? 0;
+    final reste = (dette['reste'] as num?)?.toDouble() ?? 0;
+    final nom = dette['client_nom'] as String? ?? 'Client au comptoir';
+    final tresVieille = anciennete >= 30;
+    final couleur = tresVieille ? Colors.redAccent : Colors.orangeAccent;
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 10),
+      child: Material(
+        color: Colors.transparent,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(15),
+        onTap: () async {
+          await Navigator.push(context,
+              MaterialPageRoute(builder: (_) => const ClientsScreen()));
+          _charger();
+        },
+        child: Ink(
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            color: AppColors.carte,
+            borderRadius: BorderRadius.circular(15),
+            border: Border.all(color: couleur.withValues(alpha: 0.35)),
+          ),
+          child: Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(9),
+                decoration: BoxDecoration(
+                    color: couleur.withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(10)),
+                child: Icon(Icons.notifications_active_outlined,
+                    color: couleur, size: 20),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(nom,
+                        style: const TextStyle(
+                            color: Colors.white,
+                            fontWeight: FontWeight.bold,
+                            fontSize: 14)),
+                    const SizedBox(height: 3),
+                    Text(
+                        '${dette['numero']} • depuis $anciennete jour(s)',
+                        style: TextStyle(
+                            color: couleur,
+                            fontSize: 12,
+                            fontWeight: FontWeight.bold)),
+                  ],
+                ),
+              ),
+              Text(fmtFcfa(reste),
+                  style: const TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 15)),
+            ],
+          ),
+        ),
+        ),
+      ),
     );
   }
 

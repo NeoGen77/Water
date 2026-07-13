@@ -222,6 +222,52 @@ void main() {
     expect(await commandeRepo.nombreEnAttente(), 1);
   });
 
+  test('bilan par période : bornes début incluse / fin exclue', () async {
+    final produitId = await creerProduit();
+    await commandeRepo.creerCommande(
+      type: Commande.typeVente,
+      lignes: [ligne(produitId)],
+      estPayeComptant: true,
+      isAdmin: true,
+    );
+
+    final demain =
+        DateTime.now().add(const Duration(days: 1)).toIso8601String();
+    final hier =
+        DateTime.now().subtract(const Duration(days: 1)).toIso8601String();
+
+    final dedans = await commandeRepo.bilanPeriode(hier, demain);
+    expect(dedans['ventes'], 7500);
+    expect(dedans['benefices'], 2500);
+
+    // Période entièrement passée : rien
+    final avant = await commandeRepo.bilanPeriode(
+        DateTime.now().subtract(const Duration(days: 10)).toIso8601String(),
+        hier);
+    expect(avant['ventes'], 0);
+  });
+
+  test('dettes anciennes : seules les dettes assez vieilles remontent',
+      () async {
+    final produitId = await creerProduit();
+    final clientId = await clientRepo.trouverOuCreer('Moussa');
+
+    await commandeRepo.creerCommande(
+      type: Commande.typeVente,
+      lignes: [ligne(produitId)],
+      clientId: clientId,
+      estPayeComptant: false,
+      isAdmin: true,
+    );
+
+    // La dette date d'aujourd'hui : rien à relancer à 15 jours
+    expect(await commandeRepo.dettesAnciennes(joursMin: 15), isEmpty);
+    // ... mais elle apparaît avec un seuil à 0 jour
+    final relances = await commandeRepo.dettesAnciennes(joursMin: 0);
+    expect(relances.single['client_nom'], 'Moussa');
+    expect((relances.single['reste'] as num).toDouble(), 7500);
+  });
+
   test('clients : pas de doublons Ali/ali/ALI', () async {
     final id1 = await clientRepo.trouverOuCreer('Ali');
     final id2 = await clientRepo.trouverOuCreer('ali');

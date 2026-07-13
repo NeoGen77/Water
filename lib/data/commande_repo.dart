@@ -347,6 +347,50 @@ class CommandeRepo {
     ''', [limitJours]);
   }
 
+  /// Dettes anciennes à relancer : ventes validées non soldées depuis
+  /// au moins [joursMin] jours, les plus vieilles d'abord.
+  Future<List<Map<String, dynamic>>> dettesAnciennes({int joursMin = 15}) async {
+    final db = await AppDatabase.instance;
+    return db.rawQuery('''
+      SELECT cmd.id, cmd.numero, cmd.date, c.nom AS client_nom,
+             cmd.total - COALESCE(p.paye, 0) AS reste,
+             CAST(julianday('now') - julianday(cmd.date) AS INTEGER) AS anciennete
+      FROM commandes cmd
+      LEFT JOIN clients c ON c.id = cmd.client_id
+      LEFT JOIN (
+        SELECT commande_id, SUM(montant) AS paye FROM paiements GROUP BY commande_id
+      ) p ON p.commande_id = cmd.id
+      WHERE cmd.type = 'SORTIE' AND cmd.statut = 'VALIDEE'
+        AND cmd.total - COALESCE(p.paye, 0) > 0.001
+        AND julianday('now') - julianday(cmd.date) >= ?
+      ORDER BY anciennete DESC
+    ''', [joursMin]);
+  }
+
+  /// Ventes/dépenses/bénéfice entre deux dates (début inclus, fin exclue).
+  /// Sert aux comparaisons de périodes.
+  Future<Map<String, double>> bilanPeriode(
+      String debutInclus, String finExclue) async {
+    final db = await AppDatabase.instance;
+    final res = await db.rawQuery('''
+      SELECT type, SUM(total) AS total, SUM(benefice) AS benefice
+      FROM commandes
+      WHERE statut = 'VALIDEE' AND date >= ? AND date < ?
+      GROUP BY type
+    ''', [debutInclus, finExclue]);
+
+    double ventes = 0, depenses = 0, benefices = 0;
+    for (final row in res) {
+      if (row['type'] == 'ENTREE') {
+        depenses = (row['total'] as num?)?.toDouble() ?? 0;
+      } else {
+        ventes = (row['total'] as num?)?.toDouble() ?? 0;
+        benefices = (row['benefice'] as num?)?.toDouble() ?? 0;
+      }
+    }
+    return {'ventes': ventes, 'depenses': depenses, 'benefices': benefices};
+  }
+
   /// Quantités vendues par produit sur les N derniers jours (ventes validées).
   /// Sert à estimer le rythme de vente et prévoir les ruptures de stock.
   Future<Map<int, int>> quantitesVenduesParProduit({int jours = 14}) async {
