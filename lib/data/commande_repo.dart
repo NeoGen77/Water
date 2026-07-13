@@ -347,6 +347,34 @@ class CommandeRepo {
     ''', [limitJours]);
   }
 
+  /// Quantités vendues par produit sur les N derniers jours (ventes validées).
+  /// Sert à estimer le rythme de vente et prévoir les ruptures de stock.
+  Future<Map<int, int>> quantitesVenduesParProduit({int jours = 14}) async {
+    final db = await AppDatabase.instance;
+    final depuis = DateTime.now()
+        .subtract(Duration(days: jours))
+        .toIso8601String()
+        .substring(0, 10);
+    final rows = await db.rawQuery('''
+      SELECT l.produit_id, SUM(l.quantite) AS q
+      FROM lignes l
+      JOIN commandes cmd ON cmd.id = l.commande_id
+      WHERE cmd.type = 'SORTIE' AND cmd.statut = 'VALIDEE' AND cmd.date >= ?
+      GROUP BY l.produit_id
+    ''', [depuis]);
+    return {
+      for (final r in rows)
+        (r['produit_id'] as num).toInt(): (r['q'] as num?)?.toInt() ?? 0
+    };
+  }
+
+  Future<int> nombreEnAttente() async {
+    final db = await AppDatabase.instance;
+    final res = await db.rawQuery(
+        "SELECT COUNT(*) AS n FROM commandes WHERE statut = 'EN_ATTENTE'");
+    return (res.first['n'] as num).toInt();
+  }
+
   /// Quantités vendues par marque sur une période (top ventes).
   Future<List<Map<String, dynamic>>> topVentes({String filtre = 'Tout'}) async {
     final db = await AppDatabase.instance;

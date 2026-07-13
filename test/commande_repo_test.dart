@@ -189,6 +189,39 @@ void main() {
     expect(bilan['ventes'], 0);
   });
 
+  test('rythme de vente : quantités des 14 derniers jours par produit',
+      () async {
+    final produitId = await creerProduit();
+
+    await commandeRepo.creerCommande(
+      type: Commande.typeVente,
+      lignes: [ligne(produitId, qte: 5)],
+      estPayeComptant: true,
+      isAdmin: true,
+    );
+    await commandeRepo.creerCommande(
+      type: Commande.typeVente,
+      lignes: [ligne(produitId, qte: 3)],
+      estPayeComptant: true,
+      isAdmin: true,
+    );
+
+    final ventes = await commandeRepo.quantitesVenduesParProduit(jours: 14);
+    expect(ventes[produitId], 8);
+
+    // Une commande EN_ATTENTE ne compte pas dans le rythme
+    await commandeRepo.creerCommande(
+      type: Commande.typeVente,
+      lignes: [ligne(produitId, qte: 10)],
+      estPayeComptant: true,
+      isAdmin: false,
+    );
+    final ventesApres =
+        await commandeRepo.quantitesVenduesParProduit(jours: 14);
+    expect(ventesApres[produitId], 8);
+    expect(await commandeRepo.nombreEnAttente(), 1);
+  });
+
   test('clients : pas de doublons Ali/ali/ALI', () async {
     final id1 = await clientRepo.trouverOuCreer('Ali');
     final id2 = await clientRepo.trouverOuCreer('ali');

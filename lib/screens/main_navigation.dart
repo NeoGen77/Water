@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import 'accueil_screen.dart';
 import 'caisse_screen.dart';
 import 'clients_screen.dart';
 import 'dashboard_screen.dart';
@@ -21,6 +22,7 @@ class _MainNavigationState extends State<MainNavigation> {
   @override
   Widget build(BuildContext context) {
     final screens = <Widget>[
+      if (widget.isAdmin) const AccueilScreen(),
       const DashboardScreen(),
       OperationsScreen(isAdmin: widget.isAdmin),
       if (widget.isAdmin) const CaisseScreen(),
@@ -37,6 +39,12 @@ class _MainNavigationState extends State<MainNavigation> {
         type: BottomNavigationBarType.fixed,
         onTap: (index) => setState(() => _currentIndex = index),
         items: [
+          if (widget.isAdmin)
+            const BottomNavigationBarItem(
+              icon: Icon(Icons.home_outlined),
+              activeIcon: Icon(Icons.home),
+              label: 'Accueil',
+            ),
           const BottomNavigationBarItem(
             icon: Icon(Icons.inventory_2_outlined),
             activeIcon: Icon(Icons.inventory_2),
