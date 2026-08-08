@@ -268,6 +268,119 @@ void main() {
     expect((relances.single['reste'] as num).toDouble(), 7500);
   });
 
+  test('numérotation : une annulation ne fait pas reculer le compteur',
+      () async {
+    final produitId = await creerProduit(stock: 500);
+
+    Future<String> vendre() => commandeRepo.creerCommande(
+          type: Commande.typeVente,
+          lignes: [ligne(produitId, qte: 1)],
+          estPayeComptant: true,
+          isAdmin: true,
+        );
+
+    final n1 = await vendre();
+    final n2 = await vendre();
+    expect(n1, endsWith('-0001'));
+    expect(n2, endsWith('-0002'));
+
+    // On annule la première : le numéro 0001 est libéré...
+    final premiere =
+        (await commandeRepo.historique()).firstWhere((c) => c.numero == n1);
+    await commandeRepo.annulerCommande(premiere.id!);
+
+    // ... mais la vente suivante ne doit pas le réutiliser (collision UNIQUE).
+    final n3 = await vendre();
+    expect(n3, endsWith('-0003'));
+
+    final numeros = (await commandeRepo.historique()).map((c) => c.numero);
+    expect(numeros.toSet().length, numeros.length);
+  });
+
+  test('numérotation : un rejet de commande en attente ne crée pas de doublon',
+      () async {
+    final produitId = await creerProduit(stock: 500);
+
+    Future<String> saisir({required bool isAdmin}) =>
+        commandeRepo.creerCommande(
+          type: Commande.typeVente,
+          lignes: [ligne(produitId, qte: 1)],
+          estPayeComptant: true,
+          isAdmin: isAdmin,
+        );
+
+    // La secrétaire saisit deux commandes, l'admin rejette la première.
+    final n1 = await saisir(isAdmin: false);
+    await saisir(isAdmin: false);
+    final rejetee =
+        (await commandeRepo.enAttente()).firstWhere((c) => c.numero == n1);
+    await commandeRepo.rejeterCommande(rejetee.id!);
+
+    // La saisie suivante doit passer sans collision.
+    final n3 = await saisir(isAdmin: false);
+    expect(n3, endsWith('-0003'));
+
+    final numeros = (await commandeRepo.enAttente()).map((c) => c.numero);
+    expect(numeros.toSet().length, numeros.length);
+  });
+
+  test('numérotation : le compteur du jour repart à 1 si tout a été supprimé',
+      () async {
+    final produitId = await creerProduit(stock: 500);
+
+    final n1 = await commandeRepo.creerCommande(
+      type: Commande.typeVente,
+      lignes: [ligne(produitId, qte: 1)],
+      estPayeComptant: true,
+      isAdmin: true,
+    );
+    final cmd =
+        (await commandeRepo.historique()).firstWhere((c) => c.numero == n1);
+    await commandeRepo.annulerCommande(cmd.id!);
+
+    // Comportement assumé : plus aucune commande du jour en base, donc
+    // aucun risque de collision — le numéro 0001 redevient disponible.
+    final n2 = await commandeRepo.creerCommande(
+      type: Commande.typeVente,
+      lignes: [ligne(produitId, qte: 1)],
+      estPayeComptant: true,
+      isAdmin: true,
+    );
+    expect(n2, endsWith('-0001'));
+  });
+
+  test('numérotation : ventes et ravitaillements comptent séparément',
+      () async {
+    final produitId = await creerProduit(stock: 500);
+
+    final vente = await commandeRepo.creerCommande(
+      type: Commande.typeVente,
+      lignes: [ligne(produitId, qte: 1)],
+      estPayeComptant: true,
+      isAdmin: true,
+    );
+    final ravito = await commandeRepo.creerCommande(
+      type: Commande.typeRavitaillement,
+      lignes: [
+        LigneCommande(
+          produitId: produitId,
+          marque: 'Lafi',
+          quantite: 10,
+          prixUnitaire: 1000,
+          montant: 10000,
+          benefice: 0,
+        ),
+      ],
+      estPayeComptant: true,
+      isAdmin: true,
+    );
+
+    expect(vente, startsWith('VEN-'));
+    expect(vente, endsWith('-0001'));
+    expect(ravito, startsWith('RAV-'));
+    expect(ravito, endsWith('-0001'));
+  });
+
   test('clients : pas de doublons Ali/ali/ALI', () async {
     final id1 = await clientRepo.trouverOuCreer('Ali');
     final id2 = await clientRepo.trouverOuCreer('ali');

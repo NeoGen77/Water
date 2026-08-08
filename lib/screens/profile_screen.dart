@@ -155,6 +155,113 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 
+  // --- RÉINITIALISATION DU MOT DE PASSE SECRÉTAIRE (Admin uniquement) ---
+  // La Secrétaire n'a pas de mot de passe maître : sans cette porte de
+  // secours, un oubli obligerait à effacer les préférences de l'application.
+  Future<void> _reinitialiserMotDePasseSecretaire() async {
+    final autorise = await demanderMotDePasseAdmin(
+      context,
+      titre: 'MOT DE PASSE SECRÉTAIRE',
+      message:
+          'Vous allez définir un nouveau mot de passe pour le compte Secrétaire, '
+          'sans avoir besoin de l\'ancien.\n\n'
+          'Confirmez avec le mot de passe administrateur :',
+      libelleBouton: 'CONTINUER',
+      couleur: AppColors.primaire,
+    );
+    if (!autorise || !mounted) return;
+
+    final nouveau = await _demanderNouveauMotDePasse();
+    if (nouveau == null || !mounted) return;
+
+    final messenger = ScaffoldMessenger.of(context);
+    await AuthService.reinitialiserMotDePasseSecretaire(nouveau);
+    messenger.showSnackBar(const SnackBar(
+        content: Text('✅ Mot de passe secrétaire réinitialisé.'),
+        backgroundColor: Colors.green));
+  }
+
+  /// Saisie du nouveau mot de passe, confirmée deux fois.
+  /// Retourne null si l'utilisateur annule.
+  Future<String?> _demanderNouveauMotDePasse() {
+    final nouveauController = TextEditingController();
+    final confirmController = TextEditingController();
+    String erreur = '';
+
+    return showDialog<String>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setStateDialog) => AlertDialog(
+          backgroundColor: AppColors.carte,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(15),
+            side: const BorderSide(color: AppColors.primaire, width: 1),
+          ),
+          title: const Row(
+            children: [
+              Icon(Icons.lock_reset, color: AppColors.primaire),
+              SizedBox(width: 8),
+              Expanded(
+                child: Text('Nouveau mot de passe',
+                    style: TextStyle(color: Colors.white, fontSize: 16)),
+              ),
+            ],
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(
+                controller: nouveauController,
+                obscureText: true,
+                autofocus: true,
+                style: const TextStyle(color: Colors.white),
+                decoration: const InputDecoration(
+                    labelText: 'Nouveau mot de passe secrétaire'),
+              ),
+              const SizedBox(height: 15),
+              TextField(
+                controller: confirmController,
+                obscureText: true,
+                style: const TextStyle(color: Colors.white),
+                decoration: InputDecoration(
+                  labelText: 'Confirmer',
+                  errorText: erreur.isEmpty ? null : erreur,
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child:
+                  const Text('Annuler', style: TextStyle(color: Colors.white54)),
+            ),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                  backgroundColor: AppColors.primaire,
+                  foregroundColor: Colors.white),
+              onPressed: () {
+                final nouveau = nouveauController.text.trim();
+                if (nouveau.length < 4) {
+                  setStateDialog(
+                      () => erreur = 'Au moins 4 caractères.');
+                  return;
+                }
+                if (nouveau != confirmController.text.trim()) {
+                  setStateDialog(
+                      () => erreur = 'Les deux saisies ne correspondent pas.');
+                  return;
+                }
+                Navigator.pop(ctx, nouveau);
+              },
+              child: const Text('RÉINITIALISER'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   // --- RÉINITIALISATION (protégée par le mot de passe admin) ---
   Future<void> _reinitialiser() async {
     final ok = await demanderMotDePasseAdmin(
@@ -282,6 +389,17 @@ class _ProfileScreenState extends State<ProfileScreen> {
               onTap: _afficherBoiteChangementMotDePasse,
             ),
             const SizedBox(height: 15),
+            if (widget.isAdmin) ...[
+              _boutonAction(
+                titre: 'Mot de passe secrétaire oublié',
+                sousTitre:
+                    'Définir un nouveau mot de passe sans connaître l\'ancien',
+                icone: Icons.key_off_outlined,
+                couleur: AppColors.primaire,
+                onTap: _reinitialiserMotDePasseSecretaire,
+              ),
+              const SizedBox(height: 15),
+            ],
             _boutonAction(
               titre: 'Se déconnecter',
               sousTitre: 'Fermer la session actuelle',

@@ -51,4 +51,14 @@ class AuthService {
     await prefs.setString(_cle(isAdmin), _hash(nouveau));
     return true;
   }
+
+  /// Redéfinit le mot de passe secrétaire sans connaître l'ancien.
+  ///
+  /// Contrairement à l'Admin, la Secrétaire n'a pas de mot de passe maître :
+  /// c'est l'unique voie de secours en cas d'oubli. L'appelant DOIT avoir
+  /// confirmé l'identité de l'Admin au préalable (`demanderMotDePasseAdmin`).
+  static Future<void> reinitialiserMotDePasseSecretaire(String nouveau) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_cle(false), _hash(nouveau));
+  }
 }

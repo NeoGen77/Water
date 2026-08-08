@@ -86,15 +86,21 @@ class CommandeRepo {
     });
   }
 
+  /// Numéro du jour, basé sur le plus grand rang déjà attribué et non sur le
+  /// nombre de commandes : une annulation ne doit jamais faire reculer le
+  /// compteur, sinon le numéro suivant entre en collision avec un numéro
+  /// existant (contrainte UNIQUE).
   Future<String> _prochainNumero(DatabaseExecutor txn, String type) async {
     final prefixe = type == Commande.typeVente ? 'VEN' : 'RAV';
     final jour = todayKey().replaceAll('-', '');
+    final debut = '$prefixe-$jour-';
     final res = await txn.rawQuery(
-      "SELECT COUNT(*) AS n FROM commandes WHERE numero LIKE ?",
-      ['$prefixe-$jour-%'],
+      'SELECT MAX(CAST(substr(numero, ?) AS INTEGER)) AS n '
+      'FROM commandes WHERE numero LIKE ?',
+      [debut.length + 1, '$debut%'],
     );
-    final n = (res.first['n'] as num).toInt() + 1;
-    return '$prefixe-$jour-${n.toString().padLeft(4, '0')}';
+    final n = ((res.first['n'] as num?)?.toInt() ?? 0) + 1;
+    return '$debut${n.toString().padLeft(4, '0')}';
   }
 
   /// sens = 1 pour appliquer, -1 pour annuler l'effet stock.
